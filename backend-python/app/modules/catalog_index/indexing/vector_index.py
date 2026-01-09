@@ -5,10 +5,16 @@ Uses sentence-transformers + ChromaDB for semantic search.
 """
 
 from typing import List, Dict, Any, Optional
+import os
+from typing import Iterable
 import chromadb
 from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
+try:
+    from huggingface_hub import InferenceClient
+except Exception:
+    InferenceClient = None
 import json
 
 from ..models import IndexDocument
@@ -36,13 +42,37 @@ class VectorIndex:
             metadata={"hnsw:space": "cosine"}
         )
         
-        # Use shared model instance to save memory and time
-        global _model_cache
-        if embedding_model not in _model_cache:
-            print(f"[Vector] Loading embedding model: {embedding_model}")
-            _model_cache[embedding_model] = SentenceTransformer(embedding_model)
-        
-        self.model = _model_cache[embedding_model]
+        # Prefer remote Hugging Face Inference API when an API key is provided
+        hf_key = os.getenv("HUGGINGFACE_API_KEY") or os.getenv("CHROMA_HUGGINGFACE_API_KEY")
+        if hf_key and InferenceClient is not None:
+            print(f"[Vector] Using Hugging Face Inference API for embeddings: {embedding_model}")
+            client = InferenceClient(hf_key)
+
+            class HFEmbedder:
+                def __init__(self, client: InferenceClient, model_name: str):
+                    self.client = client
+                    self.model_name = model_name
+
+                def encode(self, texts: Iterable[str], show_progress_bar: bool = False, convert_to_numpy: bool = True):
+                    results = []
+                    batch_size = 32
+                    texts = list(texts)
+                    for i in range(0, len(texts), batch_size):
+                        batch = texts[i:i+batch_size]
+                        resp = self.client.feature_extraction(model=self.model_name, inputs=batch)
+                        results.extend(resp)
+                    import numpy as _np
+                    return _np.array(results)
+
+            self.model = HFEmbedder(client, embedding_model)
+        else:
+            # Use shared model instance to save memory and time
+            global _model_cache
+            if embedding_model not in _model_cache:
+                print(f"[Vector] Loading embedding model: {embedding_model}")
+                _model_cache[embedding_model] = SentenceTransformer(embedding_model)
+            
+            self.model = _model_cache[embedding_model]
         print(f"[Vector] Initialized index: {index_name}")
     
     def _sanitize_metadata(self, metadata: Dict[str, Any]) -> Dict[str, Any]:

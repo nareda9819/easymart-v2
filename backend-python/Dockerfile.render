@@ -14,11 +14,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 
 # Install with increased timeout and retries, prefer binary wheels
-RUN pip install --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -r requirements.txt \
-    --timeout=300 \
-    --retries=5 \
-    --prefer-binary || exit 0
+RUN pip install --upgrade pip setuptools wheel --root-user-action=ignore && \
+  pip install --no-cache-dir --root-user-action=ignore -r requirements.txt \
+  --timeout=300 \
+  --retries=5 \
+  --prefer-binary || exit 0
 
 # Copy app
 COPY app/ ./app/
