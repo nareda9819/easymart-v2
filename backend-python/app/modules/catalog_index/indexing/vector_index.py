@@ -59,7 +59,8 @@ class VectorIndex:
                     texts = list(texts)
                     for i in range(0, len(texts), batch_size):
                         batch = texts[i:i+batch_size]
-                        resp = self.client.feature_extraction(model=self.model_name, inputs=batch)
+                        # InferenceClient.feature_extraction expects positional args
+                        resp = self.client.feature_extraction(self.model_name, batch)
                         results.extend(resp)
                     import numpy as _np
                     return _np.array(results)
