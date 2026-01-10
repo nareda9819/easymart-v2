@@ -7,6 +7,7 @@ Uses sentence-transformers + ChromaDB for semantic search.
 from typing import List, Dict, Any, Optional
 import os
 from typing import Iterable
+import requests
 import chromadb
 from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
@@ -44,28 +45,35 @@ class VectorIndex:
         
         # Prefer remote Hugging Face Inference API when an API key is provided
         hf_key = os.getenv("HUGGINGFACE_API_KEY") or os.getenv("CHROMA_HUGGINGFACE_API_KEY")
-        if hf_key and InferenceClient is not None:
+        if hf_key:
             print(f"[Vector] Using Hugging Face Inference API for embeddings: {embedding_model}")
-            client = InferenceClient(hf_key)
 
             class HFEmbedder:
-                def __init__(self, client: InferenceClient, model_name: str):
-                    self.client = client
+                def __init__(self, hf_key: str, model_name: str):
+                    self.hf_key = hf_key
                     self.model_name = model_name
+                    self.url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model_name}"
 
                 def encode(self, texts: Iterable[str], show_progress_bar: bool = False, convert_to_numpy: bool = True):
                     results = []
                     batch_size = 32
                     texts = list(texts)
+                    headers = {"Authorization": f"Bearer {self.hf_key}"}
                     for i in range(0, len(texts), batch_size):
                         batch = texts[i:i+batch_size]
-                        # InferenceClient.feature_extraction expects positional args
-                        resp = self.client.feature_extraction(self.model_name, batch)
-                        results.extend(resp)
+                        try:
+                            resp = requests.post(self.url, headers=headers, json={"inputs": batch}, timeout=60)
+                            resp.raise_for_status()
+                            data = resp.json()
+                            if isinstance(data, dict) and data.get("error"):
+                                raise RuntimeError(data.get("error"))
+                            results.extend(data)
+                        except Exception as e:
+                            raise RuntimeError(f"Hugging Face inference request failed: {e}")
                     import numpy as _np
                     return _np.array(results)
 
-            self.model = HFEmbedder(client, embedding_model)
+            self.model = HFEmbedder(hf_key, embedding_model)
         else:
             # Use shared model instance to save memory and time
             global _model_cache
