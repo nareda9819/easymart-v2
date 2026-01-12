@@ -71,7 +71,7 @@ export async function startServer() {
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
-      "connect-src 'self'", // Allow fetch to same origin (backend API)
+      "connect-src 'self' https://easymart-v2-production.up.railway.app", // Allow fetch to backend API, // Allow fetch to same origin (backend API)
       `frame-ancestors ${frameAncestors || "'none'"}`,
     ].join("; ");
 
