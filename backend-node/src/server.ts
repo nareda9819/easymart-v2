@@ -69,7 +69,7 @@ export async function startServer() {
     // - frame-ancestors: ONLY these origins can embed this page in an iframe
     const csp = [
       "default-src 'self'",
-      "script-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
       "connect-src 'self'", // Allow fetch to same origin (backend API)
       `frame-ancestors ${frameAncestors || "'none'"}`,
