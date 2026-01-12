@@ -43,6 +43,27 @@ const nextConfig = {
 
     // Enable standalone output for Docker
     //output: 'standalone',
+
+    async headers() {
+        return [
+            {
+                source: '/chat',
+                headers: [
+                    {
+                        key: 'Content-Security-Policy',
+                        value: [
+                            "frame-ancestors 'self'",
+                            "https://orgfarm-e6b615be40-dev-ed.develop.my.site.com",
+                            "https://orgfarm-e6b615be40-dev-ed.develop.preview.salesforce-experience.com",
+                            "https://*.salesforce.com",
+                            "https://*.force.com",
+                            "https://*.salesforce-experience.com",
+                        ].join(' '),
+                    },
+                ],
+            },
+        ];
+    },
 };
 
 module.exports = nextConfig;
