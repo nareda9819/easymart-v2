@@ -47,7 +47,8 @@ const nextConfig = {
     async headers() {
         return [
             {
-                source: '/chat',
+                // Apply to both /chat and /embed routes
+                source: '/:path(chat|embed)',
                 headers: [
                     {
                         key: 'Content-Security-Policy',
