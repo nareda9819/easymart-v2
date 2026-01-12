@@ -32,6 +32,10 @@ export const config = {
   
   // Session
   SESSION_SECRET: process.env.SESSION_SECRET || "easymart-secret-change-in-production",
+
+  // CORS/CSP: Comma-separated list of allowed origins for widget embedding
+  // Example: "https://mystore.my.site.com,https://admin.shopify.com"
+  ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || "",
 };
 
 // Validate required environment variables

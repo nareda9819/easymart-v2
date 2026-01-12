@@ -52,25 +52,37 @@ class VectorIndex:
                 def __init__(self, hf_key: str, model_name: str):
                     self.hf_key = hf_key
                     self.model_name = model_name
-                    self.url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model_name}"
+                    # Use the model endpoint (more broadly supported)
+                    self.url = f"https://api-inference.huggingface.co/models/{model_name}"
+                    self.headers = {"Authorization": f"Bearer {self.hf_key}"}
 
                 def encode(self, texts: Iterable[str], show_progress_bar: bool = False, convert_to_numpy: bool = True):
+                    import time, numpy as _np
                     results = []
-                    batch_size = 32
+                    batch_size = 16
                     texts = list(texts)
-                    headers = {"Authorization": f"Bearer {self.hf_key}"}
                     for i in range(0, len(texts), batch_size):
-                        batch = texts[i:i+batch_size]
-                        try:
-                            resp = requests.post(self.url, headers=headers, json={"inputs": batch}, timeout=60)
-                            resp.raise_for_status()
-                            data = resp.json()
-                            if isinstance(data, dict) and data.get("error"):
-                                raise RuntimeError(data.get("error"))
-                            results.extend(data)
-                        except Exception as e:
-                            raise RuntimeError(f"Hugging Face inference request failed: {e}")
-                    import numpy as _np
+                        batch = texts[i:i + batch_size]
+                        # Retry with exponential backoff on transient errors
+                        for attempt in range(6):
+                            try:
+                                resp = requests.post(self.url, headers=self.headers, json={"inputs": batch}, timeout=60)
+                                # handle rate-limiting / model errors
+                                if resp.status_code == 429:
+                                    wait = (2 ** attempt) + 1
+                                    time.sleep(wait)
+                                    continue
+                                resp.raise_for_status()
+                                data = resp.json()
+                                if isinstance(data, dict) and data.get("error"):
+                                    raise RuntimeError(data.get("error"))
+                                # HF returns list of embeddings per input
+                                results.extend(data)
+                                break
+                            except requests.exceptions.RequestException as e:
+                                if attempt == 5:
+                                    raise RuntimeError(f"Hugging Face inference request failed: {e}")
+                                time.sleep((2 ** attempt) + 1)
                     return _np.array(results)
 
             self.model = HFEmbedder(hf_key, embedding_model)

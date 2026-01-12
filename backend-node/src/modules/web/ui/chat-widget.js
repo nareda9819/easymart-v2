@@ -2,17 +2,49 @@
   // Configuration - Replace with your actual backend URL
   const backendUrl = window.EASYMART_BACKEND_URL || "http://localhost:3001/api/chat";
   
+  // Iframe mode detection: when true, use postMessage to communicate with parent
+  const isIframeMode = window.EASYMART_IFRAME_MODE || false;
+  const parentOrigin = window.EASYMART_PARENT_ORIGIN || "*";
+  
   // Session management
   const SESSION_KEY = "easymart_session_id";
-  let sessionId = localStorage.getItem(SESSION_KEY);
-  if (!sessionId) {
+  let sessionId;
+  try {
+    sessionId = localStorage.getItem(SESSION_KEY);
+    if (!sessionId) {
+      sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      localStorage.setItem(SESSION_KEY, sessionId);
+    }
+  } catch (e) {
+    // localStorage may not be available in sandboxed iframe without allow-same-origin
     sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    localStorage.setItem(SESSION_KEY, sessionId);
   }
 
   // State
-  let isOpen = false;
+  let isOpen = isIframeMode; // Auto-open in iframe mode
   let messages = [];
+
+  // ============================================
+  // postMessage helper: send message to parent
+  // ============================================
+  function postToParent(type, data) {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type, ...data }, parentOrigin);
+    }
+  }
+
+  // ============================================
+  // Open URL: either directly or via postMessage
+  // ============================================
+  function openProductUrl(url) {
+    if (isIframeMode) {
+      // In iframe mode, ask parent to open the URL
+      postToParent("openProduct", { url });
+    } else {
+      // Direct mode: open in new tab
+      window.open(url, "_blank");
+    }
+  }
 
   // Create chat UI
   function createChatUI() {
@@ -24,7 +56,7 @@
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
         </svg>
       </div>
-      <div id="easymart-chat-box" class="easymart-chat-box" style="display: none;">
+      <div id="easymart-chat-box" class="easymart-chat-box" style="display: ${isIframeMode ? 'flex' : 'none'};">
         <div class="easymart-chat-header">
           <span>Shopping Assistant</span>
           <button id="easymart-chat-close" class="easymart-close-btn">&times;</button>
@@ -49,13 +81,27 @@
 
     // Event listeners
     document.getElementById("easymart-chat-toggle").addEventListener("click", toggleChat);
-    document.getElementById("easymart-chat-close").addEventListener("click", toggleChat);
+    
+    // Close button: in iframe mode, tell parent to close; otherwise just toggle
+    document.getElementById("easymart-chat-close").addEventListener("click", () => {
+      if (isIframeMode) {
+        postToParent("closeWidget", {});
+      } else {
+        toggleChat();
+      }
+    });
+    
     document.getElementById("easymart-send-btn").addEventListener("click", sendMessage);
     document.getElementById("easymart-chat-input").addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         sendMessage();
       }
     });
+
+    // In iframe mode, notify parent that widget is ready
+    if (isIframeMode) {
+      postToParent("widgetReady", {});
+    }
   }
 
   // Toggle chat visibility
@@ -180,7 +226,7 @@
     body.scrollTop = body.scrollHeight;
   }
 
-  // Create product card
+  // Create product card - UPDATED to use openProductUrl()
   function createProductCard(product) {
     const card = document.createElement("div");
     card.className = "easymart-product-card";
@@ -189,9 +235,16 @@
       <div class="easymart-product-info">
         <h4>${product.title}</h4>
         <p class="easymart-product-price">${product.price}</p>
-        <a href="${product.url}" target="_blank" class="easymart-product-link">View Product</a>
+        <button class="easymart-product-link" data-url="${product.url}">View Product</button>
       </div>
     `;
+    
+    // Add click handler to button (uses postMessage in iframe mode)
+    const btn = card.querySelector(".easymart-product-link");
+    btn.addEventListener("click", () => {
+      openProductUrl(product.url);
+    });
+    
     return card;
   }
 
