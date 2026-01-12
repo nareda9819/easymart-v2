@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     LLM_MAX_TOKENS: int = Field(default=512, description="LLM max tokens")
     
     # Embedding Model (for vector search)
-    EMBEDDING_MODEL: str = Field(default="all-MiniLM-L6-v2", description="Sentence transformer model")
+    EMBEDDING_MODEL: str = Field(default="sentence-transformers/distiluse-base-multilingual-cased-v2", description="Sentence transformer model")
     
     # Database / Data Storage
     @property
