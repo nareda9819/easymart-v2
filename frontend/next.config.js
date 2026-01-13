@@ -13,7 +13,7 @@ const nextConfig = {
     // Allow dev origins (fixes cross-origin warning)
     allowedDevOrigins: ['127.0.0.1', 'localhost'],
 
-    // Image configuration for Shopify CDN (updated to remotePatterns)
+    // Image configuration for Shopify CDN and Salesforce
     images: {
         remotePatterns: [{
                 protocol: 'https',
@@ -23,6 +23,32 @@ const nextConfig = {
             {
                 protocol: 'https',
                 hostname: 'easymartdummy.myshopify.com',
+                pathname: '/**',
+            },
+            // Salesforce image domains
+            {
+                protocol: 'https',
+                hostname: '**.force.com',
+                pathname: '/**',
+            },
+            {
+                protocol: 'https',
+                hostname: '**.salesforce.com',
+                pathname: '/**',
+            },
+            {
+                protocol: 'https',
+                hostname: '**.salesforceusercontent.com',
+                pathname: '/**',
+            },
+            {
+                protocol: 'https',
+                hostname: '**.documentforce.com',
+                pathname: '/**',
+            },
+            {
+                protocol: 'https',
+                hostname: '**.content.force.com',
                 pathname: '/**',
             },
         ],
