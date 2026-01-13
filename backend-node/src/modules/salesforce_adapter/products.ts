@@ -9,6 +9,7 @@ export interface ProductDTO {
   description?: string;
   price?: string;
   images?: string[];
+  image?: string;
   url?: string;
   inStock?: boolean;
   variants?: any[];
@@ -48,13 +49,19 @@ export async function getProductById(id: string): Promise<ProductDTO | null> {
 
 function normalizeProduct(raw: any): ProductDTO {
   const price = raw.price || raw.listPrice || raw.price_string || '';
+  const imgs: string[] = (raw.images || raw.imageUrls || [])
+    .map((i: any) => (typeof i === 'string' ? i : i.url))
+    .filter(Boolean);
+  const image = raw.imageUrl || imgs[0] || undefined;
+
   return {
     id: raw.productId || raw.Id || raw.id || String(raw.id || ''),
     name: raw.productName || raw.Name || raw.title || raw.name || '',
     handle: raw.handle || raw.slug || undefined,
     description: raw.description || raw.Description || undefined,
     price: String(price),
-    images: (raw.images || raw.imageUrls || []).map((i: any) => (typeof i === 'string' ? i : i.url)),
+    images: imgs,
+    image,
     url: raw.url || undefined,
     inStock: raw.inStock === undefined ? undefined : Boolean(raw.inStock),
     variants: raw.variants || [],
@@ -80,13 +87,17 @@ function normalizeProductFromApex(raw: any): ProductDTO {
   // Pattern used by your site: /FantasticEcomm/product/{handle}/{id}
   const siteUrl = siteBase ? `${siteBase}/FantasticEcomm/product/${handle}/${id}` : undefined;
 
+  const imgs: string[] = raw.imageUrl ? [raw.imageUrl] : (raw.images || []).map((i: any) => (typeof i === 'string' ? i : i.url)).filter(Boolean);
+  const image = raw.imageUrl || (raw.images && raw.images[0]) || undefined;
+
   return {
     id,
     name: raw.productName || raw.Name || raw.title || raw.name || '',
     handle: handle || undefined,
     description: raw.description || raw.Description || undefined,
     price: raw.unitPrice != null ? String(raw.unitPrice) : '0',
-    images: raw.imageUrl ? [raw.imageUrl] : [],
+    images: imgs,
+    image,
     url: raw.url || siteUrl,
     inStock: raw.inStock === undefined ? undefined : Boolean(raw.inStock),
     variants: []
