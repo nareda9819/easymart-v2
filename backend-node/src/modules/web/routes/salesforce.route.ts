@@ -112,7 +112,39 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
       try {
         const channelId = await getCmsChannelId();
         const imageUrls = await getProductImageUrls(productId);
-        cmsInfo = { channelId, imageUrls };
+        
+        // Also try direct CMS API call for debugging
+        let directCmsTest = null;
+        if (channelId && productMediaResp?.record?.ElectronicMediaId) {
+          const emId = productMediaResp.record.ElectronicMediaId;
+          try {
+            // Try the CMS Delivery API directly
+            const cmsResp = await client.get(
+              `/services/data/${apiVersion}/connect/cms/delivery/channels/${channelId}/media/${emId}`
+            );
+            directCmsTest = { status: 'success', data: cmsResp.data };
+          } catch (cmsErr: any) {
+            directCmsTest = { 
+              status: 'error', 
+              error: cmsErr.message, 
+              responseStatus: cmsErr.response?.status,
+              responseData: cmsErr.response?.data 
+            };
+          }
+          
+          // Also try querying ManagedContent directly
+          try {
+            const mcSoql = `SELECT Id, Name, ManagedContentSpaceId, CreatedById FROM ManagedContent WHERE Id = '${emId}'`;
+            const mcResp = await client.get(`/services/data/${apiVersion}/query`, {
+              params: { q: mcSoql },
+            });
+            directCmsTest = { ...directCmsTest, managedContentQuery: mcResp.data };
+          } catch (mcErr: any) {
+            directCmsTest = { ...directCmsTest, managedContentQueryError: mcErr.message };
+          }
+        }
+        
+        cmsInfo = { channelId, imageUrls, directCmsTest };
       } catch (e: any) {
         cmsInfo = { error: e.message };
       }
