@@ -238,12 +238,17 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
         return reply.send({ ok: true, productId, managedContent: [] });
       }
 
-      const idList = emIds.map((id: string) => `'${id}'`).join(',');
-      const mcSoql = `SELECT Id, Name FROM ManagedContent WHERE Id IN (${idList})`;
-      const mcResp = await client.get(`/services/data/${apiVersion}/query`, { params: { q: mcSoql } });
-      const mcRecords = mcResp.data?.records || [];
+      const managed = [];
+      for (const emId of emIds) {
+        try {
+          const mcSobj = await client.get(`/services/data/${apiVersion}/sobjects/ManagedContent/${emId}`);
+          managed.push(mcSobj.data || null);
+        } catch (e: any) {
+          managed.push({ id: emId, error: e.message, status: e.response?.status });
+        }
+      }
 
-      return reply.send({ ok: true, productId, managedContent: mcRecords });
+      return reply.send({ ok: true, productId, managedContent: managed });
     } catch (err: any) {
       return reply.status(500).send({ ok: false, error: err.message, status: err.response?.status, data: err.response?.data });
     }
