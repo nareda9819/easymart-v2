@@ -46,12 +46,6 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
       const client = salesforceClient.getClient();
       const apiVersion = config.SALESFORCE_API_VERSION || 'v57.0';
       
-      // Query ContentDocumentLink
-      const linkSoql = `SELECT ContentDocumentId FROM ContentDocumentLink WHERE LinkedEntityId = '${productId}'`;
-      const linkResp = await client.get(`/services/data/${apiVersion}/query`, {
-        params: { q: linkSoql },
-      });
-      
       // Query ProductMedia (Commerce Cloud specific)
       let productMediaResp = null;
       try {
@@ -65,40 +59,66 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
       
       // Try to get webstoreId from WebStore object
       let webstoreId = null;
-      let webstoreResp = null;
       try {
         const wsSoql = `SELECT Id, Name FROM WebStore LIMIT 1`;
-        webstoreResp = await client.get(`/services/data/${apiVersion}/query`, {
+        const webstoreResp = await client.get(`/services/data/${apiVersion}/query`, {
           params: { q: wsSoql },
         });
         webstoreId = webstoreResp.data?.records?.[0]?.Id;
       } catch (e: any) {
-        webstoreResp = { error: e.message };
+        // ignore
       }
       
-      // Try Connect API to get product with images
-      let connectProductResp = null;
+      // Query ManagedContentVariant - this is what CMS uses for media
+      let managedContentResp = null;
+      try {
+        const pmRecords = productMediaResp?.data?.records || [];
+        if (pmRecords.length > 0) {
+          const firstEmId = pmRecords[0].ElectronicMediaId;
+          // Try querying ManagedContentVariant
+          const mcSoql = `SELECT Id, Name, ManagedContentId, ContentKey FROM ManagedContentVariant WHERE Id = '${firstEmId}'`;
+          managedContentResp = await client.get(`/services/data/${apiVersion}/query`, {
+            params: { q: mcSoql },
+          });
+        }
+      } catch (e: any) {
+        managedContentResp = { error: e.message };
+      }
+      
+      // Try to get direct CMS content endpoint  
+      let cmsContentResp = null;
       if (webstoreId) {
         try {
-          connectProductResp = await client.get(`/services/data/${apiVersion}/commerce/webstores/${webstoreId}/products/${productId}`, {
-            params: { fields: 'id,name,defaultImage,mediaGroups' }
-          });
+          const pmRecords = productMediaResp?.data?.records || [];
+          if (pmRecords.length > 0) {
+            const firstEmId = pmRecords[0].ElectronicMediaId;
+            // Try the CMS endpoint for managed content
+            cmsContentResp = await client.get(`/services/data/${apiVersion}/connect/cms/contents/${firstEmId}`);
+          }
         } catch (e: any) {
-          connectProductResp = { error: e.message };
+          cmsContentResp = { error: e.message };
         }
       }
       
-      // Also get ContentVersions
-      const contentVersions = await getProductContentVersions(productId);
+      // Query Product2 fields directly to see if image URL is in a field
+      let product2Resp = null;
+      try {
+        const p2Soql = `SELECT Id, Name, Description, (SELECT Id, ElectronicMediaId FROM ProductMedia) FROM Product2 WHERE Id = '${productId}'`;
+        product2Resp = await client.get(`/services/data/${apiVersion}/query`, {
+          params: { q: p2Soql },
+        });
+      } catch (e: any) {
+        product2Resp = { error: e.message };
+      }
       
       return reply.send({
         ok: true,
         productId,
         webstoreId,
-        contentDocumentLinks: linkResp.data,
         productMedia: productMediaResp?.data || productMediaResp,
-        connectProduct: connectProductResp?.data || connectProductResp,
-        contentVersions
+        managedContent: managedContentResp?.data || managedContentResp,
+        cmsContent: cmsContentResp?.data || cmsContentResp,
+        product2: product2Resp?.data || product2Resp
       });
     } catch (err: any) {
       return reply.status(500).send({ ok: false, error: err.message, stack: err.stack });
