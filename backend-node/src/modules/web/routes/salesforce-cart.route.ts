@@ -34,6 +34,7 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
 
       // Get updated cart from Salesforce
       const cartResponse = await salesforceCart.getCart();
+      logger.debug('Raw cartResponse.lines (add)', { lines: cartResponse.lines });
 
       // Fetch product details and enrich cart items
       const enrichedItems = await Promise.all(
@@ -90,6 +91,7 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
 
       // Get cart from Apex
       const cartResponse = await salesforceCart.getCart();
+      logger.debug('Raw cartResponse.lines (get)', { lines: cartResponse.lines });
 
       if (!cartResponse.success) {
         return reply.send({
@@ -187,6 +189,7 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
 
       // Get updated cart
       const cartResponse = await salesforceCart.getCart();
+      logger.debug('Raw cartResponse.lines (update)', { lines: cartResponse.lines });
 
       const enrichedItems = await Promise.all(
         (cartResponse.lines || []).map(async (line) => {
@@ -257,6 +260,7 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
 
       // Get updated cart
       const cartResponse = await salesforceCart.getCart();
+      logger.debug('Raw cartResponse.lines (remove)', { lines: cartResponse.lines });
 
       const enrichedItems = await Promise.all(
         (cartResponse.lines || []).map(async (line) => {
