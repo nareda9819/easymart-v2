@@ -10,10 +10,12 @@ interface ChatHeaderProps {
 
 export function ChatHeader({ onClose }: ChatHeaderProps) {
   const { itemCount, getCart } = useCartStore();
+  const { refreshItemCount } = useCartStore();
   const { clearMessages, toggleCart, isCartOpen } = useChatStore();
 
   useEffect(() => {
     getCart(); // Load cart on mount
+    refreshItemCount(); // Also refresh lightweight count
   }, [getCart]);
 
   return (

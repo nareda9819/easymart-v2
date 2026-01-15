@@ -165,6 +165,18 @@ export const useCartStore = create<CartStore>()(
         }
       },
 
+        // Fetch only the lightweight item count from server
+        refreshItemCount: async () => {
+          try {
+            const resp = await cartApi.getCount();
+            if (resp && resp.success) {
+              set({ itemCount: resp.item_count });
+            }
+          } catch (e) {
+            // ignore count errors silently
+          }
+        },
+
       clearError: () => set({ error: null }),
 
         getProductQuantity: (productId: string): number => {

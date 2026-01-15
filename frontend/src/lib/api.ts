@@ -240,6 +240,15 @@ export const cartApi = {
     });
     return response.data;
   },
+  
+  // Lightweight cart count endpoint (server-side)
+  getCount: async (): Promise<{ success: boolean; item_count: number }> => {
+    const sessionId = getSessionId();
+    const response = await apiClient.get<{ success: boolean; item_count: number }>('/api/salesforce-cart/count', {
+      params: { session_id: sessionId },
+    });
+    return response.data;
+  },
 };
 
 // Export default client

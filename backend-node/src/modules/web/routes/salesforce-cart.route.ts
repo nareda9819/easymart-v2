@@ -39,13 +39,20 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
       const enrichedItems = await Promise.all(
         (cartResponse.lines || []).map(async (line) => {
           const product = await getProductById(line.productId);
+
+          // Prefer product details from product lookup; if missing, fall back to values available on the cart line itself
+          const title = product?.name || line.productName || line.name || line.title || 'Unknown Product';
+          const priceRaw = product?.price ?? line.unitPrice ?? line.price ?? '0';
+          const price = typeof priceRaw === 'number' ? String(priceRaw) : String(priceRaw || '0');
+          const image = product?.images?.[0] || line.imageUrl || line.image || null;
+
           return {
             product_id: line.productId,
             id: line.cartItemId,
-            title: product?.name || 'Unknown Product',
-            price: product?.price || '0',
+            title,
+            price,
             quantity: line.quantity,
-            image: product?.images?.[0] || null
+            image
           };
         })
       );
@@ -95,13 +102,19 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
       const enrichedItems = await Promise.all(
         (cartResponse.lines || []).map(async (line) => {
           const product = await getProductById(line.productId);
+
+          const title = product?.name || line.productName || line.name || line.title || 'Unknown Product';
+          const priceRaw = product?.price ?? line.unitPrice ?? line.price ?? '0';
+          const price = typeof priceRaw === 'number' ? String(priceRaw) : String(priceRaw || '0');
+          const image = product?.images?.[0] || line.imageUrl || line.image || null;
+
           return {
             product_id: line.productId,
             id: line.cartItemId,
-            title: product?.name || 'Unknown Product',
-            price: product?.price || '0',
+            title,
+            price,
             quantity: line.quantity,
-            image: product?.images?.[0] || null
+            image
           };
         })
       );
@@ -178,13 +191,19 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
       const enrichedItems = await Promise.all(
         (cartResponse.lines || []).map(async (line) => {
           const product = await getProductById(line.productId);
+
+          const title = product?.name || line.productName || line.name || line.title || 'Unknown Product';
+          const priceRaw = product?.price ?? line.unitPrice ?? line.price ?? '0';
+          const price = typeof priceRaw === 'number' ? String(priceRaw) : String(priceRaw || '0');
+          const image = product?.images?.[0] || line.imageUrl || line.image || null;
+
           return {
             product_id: line.productId,
             id: line.cartItemId,
-            title: product?.name || 'Unknown Product',
-            price: product?.price || '0',
+            title,
+            price,
             quantity: line.quantity,
-            image: product?.images?.[0] || null
+            image
           };
         })
       );
@@ -242,13 +261,19 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
       const enrichedItems = await Promise.all(
         (cartResponse.lines || []).map(async (line) => {
           const product = await getProductById(line.productId);
+
+          const title = product?.name || line.productName || line.name || line.title || 'Unknown Product';
+          const priceRaw = product?.price ?? line.unitPrice ?? line.price ?? '0';
+          const price = typeof priceRaw === 'number' ? String(priceRaw) : String(priceRaw || '0');
+          const image = product?.images?.[0] || line.imageUrl || line.image || null;
+
           return {
             product_id: line.productId,
             id: line.cartItemId,
-            title: product?.name || 'Unknown Product',
-            price: product?.price || '0',
+            title,
+            price,
             quantity: line.quantity,
-            image: product?.images?.[0] || null
+            image
           };
         })
       );

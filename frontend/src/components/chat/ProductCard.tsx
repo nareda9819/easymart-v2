@@ -71,8 +71,6 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
       <div className="px-4 pb-4 flex gap-2">
         <a
           href={product.url}
-          target="_blank"
-          rel="noopener noreferrer"
           className="flex-1 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 text-center"
         >
           View Product

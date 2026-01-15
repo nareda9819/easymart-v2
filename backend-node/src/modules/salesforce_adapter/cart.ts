@@ -5,6 +5,14 @@ export interface ApexCartLine {
   cartItemId: string;
   productId: string;
   quantity: number;
+  // Optional fields that some Apex implementations may return on cart lines
+  productName?: string;
+  name?: string;
+  title?: string;
+  unitPrice?: number;
+  price?: number | string;
+  imageUrl?: string;
+  image?: string;
 }
 
 export interface ApexGetCartResponse {
