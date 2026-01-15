@@ -131,13 +131,11 @@ async function fetchCmsMediaUrl(channelId: string | null, electronicMediaId: str
           return sourceUrl;
         }
       } catch (err: any) {
-        logger.warn('CMS contents FAILED', { 
+        const status = err.response?.status || 'no-status';
+        const errorData = JSON.stringify(err.response?.data || {}).substring(0, 200);
+        logger.warn(`CMS contents FAILED - status:${status} msg:${err.message} data:${errorData}`, { 
           electronicMediaId, 
-          contentKey, 
-          status: err.response?.status,
-          statusText: err.response?.statusText,
-          errorMsg: err.message,
-          responseData: JSON.stringify(err.response?.data || {}).substring(0, 300)
+          contentKey
         });
       }
 
@@ -157,7 +155,8 @@ async function fetchCmsMediaUrl(channelId: string | null, electronicMediaId: str
           return publicUrl;
         }
       } catch (err: any) {
-        logger.warn('CMS media FAILED', { 
+        const status = err.response?.status || 'no-status';
+        logger.warn(`CMS media FAILED - status:${status} msg:${err.message}`, { 
           electronicMediaId, 
           contentKey, 
           status: err.response?.status,
