@@ -84,15 +84,32 @@ async function fetchCmsMediaUrl(channelId: string | null, electronicMediaId: str
     const client = salesforceClient.getClient();
     const apiVersion = config.SALESFORCE_API_VERSION || 'v57.0';
 
-    // Step 1: Query ManagedContent explicitly to get ContentKey, Name and other known fields
-    const mcSoql = `SELECT Id, Name, ContentKey, PrimaryLanguage FROM ManagedContent WHERE Id = '${electronicMediaId}' LIMIT 1`;
-    const mcQueryResp = await client.get(`/services/data/${apiVersion}/query`, { params: { q: mcSoql } });
-    const mcRecord = (mcQueryResp.data?.records || [])[0] || {};
-    const mcData = mcRecord || {};
+    // Step 1: Get the ManagedContent record via sObject REST (returns all accessible fields)
+    let mcData: any = {};
+    try {
+      const mcResp = await client.get(`/services/data/${apiVersion}/sobjects/ManagedContent/${electronicMediaId}`);
+      mcData = mcResp.data || {};
+      logger.debug('ManagedContent sObject REST result', { 
+        electronicMediaId, 
+        fields: Object.keys(mcData).filter(k => !k.startsWith('attributes'))
+      });
+    } catch (mcErr: any) {
+      logger.warn('ManagedContent sObject REST failed, trying SOQL', { 
+        electronicMediaId, 
+        status: mcErr.response?.status,
+        error: mcErr.message 
+      });
+      // Fallback to SOQL with minimal fields
+      const mcSoql = `SELECT Id, ContentKey FROM ManagedContent WHERE Id = '${electronicMediaId}' LIMIT 1`;
+      const mcQueryResp = await client.get(`/services/data/${apiVersion}/query`, { params: { q: mcSoql } });
+      mcData = (mcQueryResp.data?.records || [])[0] || {};
+    }
+    
     const contentKey = mcData.ContentKey;
+    // Try multiple possible field names for the media path/URL
+    const nameField = mcData.Name || mcData.Title || mcData.MasterLabel || mcData.DeveloperName || '';
 
-    // Debug: Log what we got from ManagedContent
-    logger.debug('ManagedContent SOQL result', { electronicMediaId, mcData: JSON.stringify(mcData) });
+    logger.debug('ManagedContent parsed', { electronicMediaId, contentKey, nameField, hasData: Object.keys(mcData).length > 0 });
 
     // Helper: shallow recursive scan of an object/array for the first HTTP(S) URL string
     function findFirstUrl(obj: any, depth = 0): string | null {
@@ -151,7 +168,6 @@ async function fetchCmsMediaUrl(channelId: string | null, electronicMediaId: str
     // Step 4: Specific fallback for Shopify CDN paths stored in the ManagedContent `Name` field.
     // Some ManagedContent records store a relative path like `/s/files/1/0255/8191/2144/products/FILE.jpg`.
     // The public CDN URL can be constructed by prefixing `https://cdn.shopify.com`.
-    const nameField = mcData.Name || mcData.name || '';
     if (typeof nameField === 'string' && /(?:^\/)?s\/files\//i.test(nameField)) {
       const path = nameField.startsWith('/') ? nameField : `/${nameField}`;
       const shopifyUrl = `https://cdn.shopify.com${path}`;
