@@ -55,16 +55,7 @@ export const useCartStore = create<CartStore>()(
       },
 
       // Lightweight refresh of only the `itemCount` using server-side count endpoint
-      refreshItemCount: async () => {
-        try {
-          const resp = await cartApi.getCount();
-          if (resp && resp.success) {
-            set({ itemCount: resp.item_count });
-          }
-        } catch (e) {
-          // ignore errors for lightweight count
-        }
-      },
+      
 
       increaseQuantity: async (productId: string) => {
         set({ isLoading: true, error: null });
