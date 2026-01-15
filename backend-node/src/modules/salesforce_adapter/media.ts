@@ -156,7 +156,26 @@ async function fetchCmsMediaUrl(channelId: string | null, electronicMediaId: str
       return shopifyUrl;
     }
 
-    logger.warn('No public URL found for ManagedContent', { electronicMediaId });
+    // Step 5: Fallback for S3-hosted images (e.g. Northern Trail Outfitters sample data).
+    // ManagedContent Name field may contain a path like `/northerntrailoutfitters.com/nto-alpine-nutrition/default/images/large/FILE.jpg`
+    // The actual image is hosted at `https://s3.amazonaws.com/northerntrailoutfitters.com/...`
+    if (typeof nameField === 'string' && nameField.includes('/images/')) {
+      // Strip leading slash if present
+      const cleanPath = nameField.startsWith('/') ? nameField.slice(1) : nameField;
+      const s3Url = `https://s3.amazonaws.com/${cleanPath}`;
+      logger.info('Constructed S3 URL from ManagedContent Name', { electronicMediaId, url: s3Url });
+      return s3Url;
+    }
+
+    // Step 6: Generic fallback - if Name field looks like a domain/path, try S3
+    if (typeof nameField === 'string' && nameField.includes('.com/')) {
+      const cleanPath = nameField.startsWith('/') ? nameField.slice(1) : nameField;
+      const s3Url = `https://s3.amazonaws.com/${cleanPath}`;
+      logger.info('Constructed S3 URL from ManagedContent Name (generic)', { electronicMediaId, url: s3Url });
+      return s3Url;
+    }
+
+    logger.warn('No public URL found for ManagedContent', { electronicMediaId, nameField });
     return null;
   } catch (err: any) {
     logger.warn('Failed to fetch CMS media', { 
