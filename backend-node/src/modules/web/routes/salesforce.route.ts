@@ -217,6 +217,33 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
     }
   });
 
+  // GET /debug-managed-content/:productId -> return ManagedContent Id + Name for ProductMedia
+  app.get('/debug-managed-content/:productId', async (req, reply) => {
+    const productId = (req.params as any).productId;
+    try {
+      const client = salesforceClient.getClient();
+      const apiVersion = config.SALESFORCE_API_VERSION || 'v57.0';
+
+      const pmListSoql = `SELECT ElectronicMediaId FROM ProductMedia WHERE ProductId = '${productId}'`;
+      const pmListResp = await client.get(`/services/data/${apiVersion}/query`, { params: { q: pmListSoql } });
+      const pmList = pmListResp.data?.records || [];
+      const emIds = pmList.map((r: any) => r.ElectronicMediaId).filter(Boolean);
+
+      if (emIds.length === 0) {
+        return reply.send({ ok: true, productId, managedContent: [] });
+      }
+
+      const idList = emIds.map((id: string) => `'${id}'`).join(',');
+      const mcSoql = `SELECT Id, Name FROM ManagedContent WHERE Id IN (${idList})`;
+      const mcResp = await client.get(`/services/data/${apiVersion}/query`, { params: { q: mcSoql } });
+      const mcRecords = mcResp.data?.records || [];
+
+      return reply.send({ ok: true, productId, managedContent: mcRecords });
+    } catch (err: any) {
+      return reply.status(500).send({ ok: false, error: err.message, status: err.response?.status, data: err.response?.data });
+    }
+  });
+
   // GET /cart -> get current cart
   app.get("/cart", async (_req, reply) => {
     try {
