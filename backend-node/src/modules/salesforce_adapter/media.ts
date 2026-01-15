@@ -79,7 +79,7 @@ export async function getCmsChannelId(): Promise<string | null> {
  * 
  * Returns the unauthenticatedUrl (public CDN URL) or null.
  */
-async function fetchCmsMediaUrl(channelId: string, electronicMediaId: string): Promise<string | null> {
+async function fetchCmsMediaUrl(channelId: string | null, electronicMediaId: string): Promise<string | null> {
   try {
     const client = salesforceClient.getClient();
     const apiVersion = config.SALESFORCE_API_VERSION || 'v57.0';
@@ -116,8 +116,8 @@ async function fetchCmsMediaUrl(channelId: string, electronicMediaId: string): P
       return null;
     }
 
-    // Step 2: If we have a ContentKey, try the CMS Delivery API first (preferred - returns unauthenticatedUrl)
-    if (contentKey) {
+    // Step 2: If we have a ContentKey and a channelId, try the CMS Delivery API first (preferred - returns unauthenticatedUrl)
+    if (contentKey && channelId) {
       try {
         const cmsResp = await client.get(
           `/services/data/${apiVersion}/connect/cms/delivery/channels/${channelId}/media/${contentKey}`
@@ -135,7 +135,7 @@ async function fetchCmsMediaUrl(channelId: string, electronicMediaId: string): P
         logger.debug('CMS delivery API failed or returned 404; will attempt ManagedContent fallback', { electronicMediaId, status: err.response?.status, data: err.response?.data });
       }
     } else {
-      logger.debug('ManagedContent record has no ContentKey; will attempt to locate URL fields', { electronicMediaId });
+      logger.debug('Skipping CMS delivery API (no channel or no ContentKey); will attempt ManagedContent fallback', { electronicMediaId, hasChannel: !!channelId, hasContentKey: !!contentKey });
     }
 
     // Step 3: Fallback - inspect the ManagedContent record for any public URL fields (some orgs store absolute URLs already)
@@ -198,14 +198,10 @@ export async function getProductImageUrls(productId: string): Promise<string[]> 
       return [];
     }
 
-    // Step 2: Get CMS channel ID
+    // Step 2: Get CMS channel ID (may be null). We still attempt ManagedContent fallbacks even without a channel.
     const channelId = await getCmsChannelId();
-    if (!channelId) {
-      logger.warn('No CMS channel available for media resolution');
-      return [];
-    }
 
-    // Step 3: Fetch each media item via CMS Delivery API
+    // Step 3: Fetch each media item via CMS Delivery API or fallback to ManagedContent.Name
     const urls: string[] = [];
     
     for (const pm of pmRecords) {
@@ -239,12 +235,8 @@ export async function batchGetProductImageUrls(productIds: string[]): Promise<Ma
     const client = salesforceClient.getClient();
     const apiVersion = config.SALESFORCE_API_VERSION || 'v57.0';
     
-    // Step 1: Get channel ID first
+    // Step 1: Get channel ID first (may be null). We'll still attempt ManagedContent fallbacks.
     const channelId = await getCmsChannelId();
-    if (!channelId) {
-      logger.warn('No CMS channel available for batch media resolution');
-      return results;
-    }
 
     // Step 2: Query all ProductMedia for the given products in one query
     const productIdList = productIds.map(id => `'${id}'`).join(',');
