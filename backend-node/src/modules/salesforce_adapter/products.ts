@@ -1,7 +1,7 @@
 import { salesforceClient } from './client';
 import { logger } from '../observability/logger';
 import { config } from '../../config/env';
-import { batchGetProductImageUrls } from './media';
+import { batchGetProductImageUrls, getFirstElectronicMediaId, buildProxyImageUrl } from './media';
 
 export interface ProductDTO {
   id: string;
@@ -153,6 +153,20 @@ async function enrichProductsWithSalesforceImages(products: ProductDTO[]): Promi
           imageCount: urls.length,
           firstUrl: urls[0]
         });
+      }
+      // If no public CDN URLs were resolved, fall back to the media proxy using first ElectronicMediaId
+      if ((!product.images || product.images.length === 0) && !product.image) {
+        try {
+          const emId = await getFirstElectronicMediaId(product.id);
+          if (emId) {
+            const proxyUrl = buildProxyImageUrl(emId, config.BACKEND_BASE_URL || undefined);
+            product.image = proxyUrl;
+            product.images = [proxyUrl];
+            logger.debug('Assigned proxy image URL for product', { productId: product.id, proxyUrl });
+          }
+        } catch (e: any) {
+          // ignore proxy fallback failures
+        }
       }
     }
   } catch (err) {

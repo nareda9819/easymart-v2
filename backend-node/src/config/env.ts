@@ -37,6 +37,8 @@ export const config = {
   // CORS/CSP: Comma-separated list of allowed origins for widget embedding
   // Example: "https://mystore.my.site.com,https://admin.shopify.com"
   ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || "",
+  // Optional public backend URL (used to build absolute proxy URLs). If not set, proxy URLs will be relative.
+  BACKEND_BASE_URL: (process.env.BACKEND_BASE_URL || '').replace(/\/+$/, ''),
 };
 
 // Validate required environment variables

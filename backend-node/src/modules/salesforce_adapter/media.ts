@@ -312,19 +312,112 @@ export async function getProductElectronicMedia(productId: string): Promise<Elec
   }));
 }
 
+/**
+ * Return the first ElectronicMediaId for a product (or null)
+ */
+export async function getFirstElectronicMediaId(productId: string): Promise<string | null> {
+  try {
+    const client = salesforceClient.getClient();
+    const apiVersion = config.SALESFORCE_API_VERSION || 'v57.0';
+    const soql = `SELECT ElectronicMediaId FROM ProductMedia WHERE ProductId = '${productId}' ORDER BY SortOrder ASC NULLS LAST LIMIT 1`;
+    const resp = await client.get(`/services/data/${apiVersion}/query`, { params: { q: soql } });
+    const rec = resp.data?.records?.[0];
+    return rec?.ElectronicMediaId || null;
+  } catch (err: any) {
+    logger.warn('Failed to query first ElectronicMediaId', { productId, error: err.message });
+    return null;
+  }
+}
+
 export async function getProductContentVersions(_productId: string): Promise<ContentVersionInfo[]> {
   // Not used for CMS-based images
   return [];
 }
 
 export async function getContentVersionData(_contentVersionId: string): Promise<{ data: Buffer; mimeType: string } | null> {
-  // Not used for CMS-based images - they're served via public CDN URLs
-  return null;
+  try {
+    const client = salesforceClient.getClient();
+    const apiVersion = config.SALESFORCE_API_VERSION || 'v57.0';
+    const resp = await client.get(`/services/data/${apiVersion}/sobjects/ContentVersion/${_contentVersionId}/VersionData`, { responseType: 'arraybuffer' });
+    const data = Buffer.from(resp.data as ArrayBuffer);
+    const mimeType = resp.headers?.['content-type'] || 'application/octet-stream';
+    return { data, mimeType };
+  } catch (err: any) {
+    logger.warn('Failed to fetch ContentVersion binary', { contentVersionId: _contentVersionId, error: err.message, status: err.response?.status });
+    return null;
+  }
 }
 
 export async function getElectronicMediaData(_electronicMediaId: string): Promise<{ data: Buffer; mimeType: string } | null> {
-  // Not used for CMS-based images - they're served via public CDN URLs
-  return null;
+  try {
+    const client = salesforceClient.getClient();
+    const apiVersion = config.SALESFORCE_API_VERSION || 'v57.0';
+
+    // Try to query ManagedContent fields to locate any stored path
+    const soql = `SELECT Id, ContentKey, PrimaryLanguage FROM ManagedContent WHERE Id = '${_electronicMediaId}' LIMIT 1`;
+    const resp = await client.get(`/services/data/${apiVersion}/query`, { params: { q: soql } });
+    const mc = resp.data?.records?.[0] || {};
+
+    // 1) If ManagedContent has a ContentKey and a channel is available, try delivery API for binary via unauthenticatedUrl
+    const channelId = await getCmsChannelId();
+    if (mc?.ContentKey && channelId) {
+      try {
+        const cmsResp = await client.get(`/services/data/${apiVersion}/connect/cms/delivery/channels/${channelId}/media/${mc.ContentKey}`);
+        const publicUrl = cmsResp.data?.unauthenticatedUrl || cmsResp.data?.url;
+        if (publicUrl) {
+          const axios = require('axios');
+          const bin = await axios.get(publicUrl, { responseType: 'arraybuffer' });
+          const data = Buffer.from(bin.data as ArrayBuffer);
+          const mimeType = bin.headers['content-type'] || 'application/octet-stream';
+          return { data, mimeType };
+        }
+      } catch (err: any) {
+        logger.debug('CMS delivery binary fetch failed', { electronicMediaId: _electronicMediaId, error: err.message });
+      }
+    }
+
+    // 2) If ManagedContent stores a Shopify relative path in some field, attempt to construct Shopify CDN URL
+    // We'll try to GET the ManagedContent record via sobject to inspect any fields (best-effort)
+    try {
+      const sResp = await client.get(`/services/data/${apiVersion}/sobjects/ManagedContent/${_electronicMediaId}`);
+      const mcData = sResp.data || {};
+      // Scan for a /s/files/ path in any field
+      const scanForPath = (obj: any): string | null => {
+        if (!obj) return null;
+        if (typeof obj === 'string' && /(?:^\/)?s\/files\//i.test(obj)) return obj;
+        if (Array.isArray(obj)) {
+          for (const v of obj) {
+            const found = scanForPath(v);
+            if (found) return found;
+          }
+        } else if (typeof obj === 'object') {
+          for (const k of Object.keys(obj)) {
+            const found = scanForPath(obj[k]);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+
+      const path = scanForPath(mcData);
+      if (path) {
+        const finalPath = path.startsWith('/') ? path : `/${path}`;
+        const shopifyUrl = `https://cdn.shopify.com${finalPath}`;
+        const axios = require('axios');
+        const bin = await axios.get(shopifyUrl, { responseType: 'arraybuffer' });
+        const data = Buffer.from(bin.data as ArrayBuffer);
+        const mimeType = bin.headers['content-type'] || 'application/octet-stream';
+        return { data, mimeType };
+      }
+    } catch (err: any) {
+      logger.debug('ManagedContent sobject scan failed for binary', { electronicMediaId: _electronicMediaId, error: err.message });
+    }
+
+    return null;
+  } catch (err: any) {
+    logger.warn('Failed to fetch ElectronicMedia binary', { electronicMediaId: _electronicMediaId, error: err.message });
+    return null;
+  }
 }
 
 export function buildProxyImageUrl(mediaId: string, backendBaseUrl?: string): string {
@@ -338,6 +431,7 @@ export default {
   getProductImageUrls,
   batchGetProductImageUrls,
   getProductElectronicMedia,
+  getFirstElectronicMediaId,
   getProductContentVersions,
   getContentVersionData,
   getElectronicMediaData,
