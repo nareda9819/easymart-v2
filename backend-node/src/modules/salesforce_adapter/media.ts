@@ -84,35 +84,112 @@ async function fetchCmsMediaUrl(channelId: string | null, electronicMediaId: str
     const client = salesforceClient.getClient();
     const apiVersion = config.SALESFORCE_API_VERSION || 'v57.0';
 
-    // Step 1: Get the ManagedContent record via sObject REST (returns all accessible fields)
+    // Step 1: Get the ManagedContent record via sObject REST to get ContentKey
     let mcData: any = {};
+    let contentKey: string | null = null;
     try {
       const mcResp = await client.get(`/services/data/${apiVersion}/sobjects/ManagedContent/${electronicMediaId}`);
       mcData = mcResp.data || {};
+      contentKey = mcData.ContentKey || null;
       logger.info('ManagedContent sObject REST result', { 
         electronicMediaId, 
-        fields: Object.keys(mcData).filter(k => !k.startsWith('attributes')),
-        rawData: JSON.stringify(mcData)
+        contentKey,
+        fields: Object.keys(mcData).filter(k => !k.startsWith('attributes'))
       });
     } catch (mcErr: any) {
-      logger.warn('ManagedContent sObject REST failed, trying SOQL', { 
+      logger.warn('ManagedContent sObject REST failed', { 
         electronicMediaId, 
         status: mcErr.response?.status,
         error: mcErr.message 
       });
-      // Fallback to SOQL with minimal fields
-      const mcSoql = `SELECT Id, ContentKey FROM ManagedContent WHERE Id = '${electronicMediaId}' LIMIT 1`;
-      const mcQueryResp = await client.get(`/services/data/${apiVersion}/query`, { params: { q: mcSoql } });
-      mcData = (mcQueryResp.data?.records || [])[0] || {};
     }
-    
-    const contentKey = mcData.ContentKey;
-    // Try multiple possible field names for the media path/URL
-    const nameField = mcData.Name || mcData.Title || mcData.MasterLabel || mcData.DeveloperName || '';
 
-    logger.info('ManagedContent parsed', { electronicMediaId, contentKey, nameField, hasData: Object.keys(mcData).length > 0 });
+    // Step 2: Query ManagedContentVariant to get the actual media URL
+    // ManagedContentVariant stores the body/URL for CMS media items
+    try {
+      const variantSoql = `SELECT Id, Name, Url, VariantType, ManagedContentId FROM ManagedContentVariant WHERE ManagedContentId = '${electronicMediaId}' LIMIT 1`;
+      const variantResp = await client.get(`/services/data/${apiVersion}/query`, { params: { q: variantSoql } });
+      const variant = (variantResp.data?.records || [])[0];
+      
+      if (variant) {
+        logger.info('ManagedContentVariant found', { 
+          electronicMediaId, 
+          variantId: variant.Id,
+          name: variant.Name,
+          url: variant.Url,
+          variantType: variant.VariantType
+        });
+        
+        // If Url field has a value, use it
+        if (variant.Url) {
+          // Check if it's a relative S3 path that needs prefix
+          if (variant.Url.startsWith('http')) {
+            return variant.Url;
+          }
+          // Construct S3 URL if it's a relative path
+          const cleanPath = variant.Url.startsWith('/') ? variant.Url.slice(1) : variant.Url;
+          const s3Url = `https://s3.amazonaws.com/${cleanPath}`;
+          logger.info('Constructed S3 URL from ManagedContentVariant.Url', { electronicMediaId, url: s3Url });
+          return s3Url;
+        }
+        
+        // If Name field looks like a path, try that
+        if (variant.Name && (variant.Name.includes('/images/') || variant.Name.includes('.com/'))) {
+          const cleanPath = variant.Name.startsWith('/') ? variant.Name.slice(1) : variant.Name;
+          const s3Url = `https://s3.amazonaws.com/${cleanPath}`;
+          logger.info('Constructed S3 URL from ManagedContentVariant.Name', { electronicMediaId, url: s3Url });
+          return s3Url;
+        }
+      }
+    } catch (varErr: any) {
+      logger.warn('ManagedContentVariant query failed', { 
+        electronicMediaId, 
+        status: varErr.response?.status,
+        error: varErr.message 
+      });
+    }
 
-    // Helper: shallow recursive scan of an object/array for the first HTTP(S) URL string
+    // Step 3: Try CMS Delivery API with ContentKey (if available and channelId exists)
+    if (contentKey && channelId) {
+      try {
+        // Try media endpoint first
+        const cmsResp = await client.get(
+          `/services/data/${apiVersion}/connect/cms/delivery/channels/${channelId}/media/${contentKey}`
+        );
+
+        const publicUrl = cmsResp.data?.unauthenticatedUrl || cmsResp.data?.url;
+        if (publicUrl) {
+          logger.info('Got CMS media URL via delivery API', { contentKey, publicUrl });
+          return publicUrl;
+        }
+
+        logger.info('CMS delivery media returned no URL', { contentKey, responseKeys: Object.keys(cmsResp.data || {}) });
+      } catch (err: any) {
+        logger.debug('CMS delivery media API failed', { electronicMediaId, contentKey, status: err.response?.status });
+      }
+
+      // Try contents endpoint (for non-media CMS items)
+      try {
+        const contentsResp = await client.get(
+          `/services/data/${apiVersion}/connect/cms/delivery/channels/${channelId}/contents/${contentKey}`
+        );
+        
+        const contentBody = contentsResp.data?.contentBody || {};
+        logger.info('CMS contents response', { contentKey, bodyKeys: Object.keys(contentBody) });
+        
+        // Look for source URL in content body
+        const sourceUrl = contentBody.source?.unauthenticatedUrl || contentBody.source?.url ||
+                         contentBody.altText?.unauthenticatedUrl || contentBody.url;
+        if (sourceUrl) {
+          logger.info('Got URL from CMS contents body', { contentKey, sourceUrl });
+          return sourceUrl;
+        }
+      } catch (err: any) {
+        logger.debug('CMS delivery contents API failed', { electronicMediaId, contentKey, status: err.response?.status });
+      }
+    }
+
+    // Step 4: Fallback - scan ManagedContent record for any URL
     function findFirstUrl(obj: any, depth = 0): string | null {
       if (!obj || depth > 4) return null;
       if (typeof obj === 'string') {
@@ -129,75 +206,21 @@ async function fetchCmsMediaUrl(channelId: string | null, electronicMediaId: str
       }
       if (typeof obj === 'object') {
         for (const k of Object.keys(obj)) {
-          const v = obj[k];
-          const found = findFirstUrl(v, depth + 1);
+          const found = findFirstUrl(obj[k], depth + 1);
           if (found) return found;
         }
       }
       return null;
     }
 
-    // Step 2: If we have a ContentKey and a channelId, try the CMS Delivery API first (preferred - returns unauthenticatedUrl)
-    if (contentKey && channelId) {
-      try {
-        const cmsResp = await client.get(
-          `/services/data/${apiVersion}/connect/cms/delivery/channels/${channelId}/media/${contentKey}`
-        );
-
-        const publicUrl = cmsResp.data?.unauthenticatedUrl || cmsResp.data?.url;
-        if (publicUrl) {
-          logger.debug('Got CMS media URL via delivery API', { contentKey, publicUrl });
-          return publicUrl;
-        }
-
-        logger.debug('CMS delivery returned no URL', { contentKey, responseKeys: Object.keys(cmsResp.data || {}) });
-      } catch (err: any) {
-        // Keep going to fallback - delivery API may return 404 for unpublished content
-        logger.debug('CMS delivery API failed or returned 404; will attempt ManagedContent fallback', { electronicMediaId, status: err.response?.status, data: err.response?.data });
-      }
-    } else {
-      logger.debug('Skipping CMS delivery API (no channel or no ContentKey); will attempt ManagedContent fallback', { electronicMediaId, hasChannel: !!channelId, hasContentKey: !!contentKey });
-    }
-
-    // Step 3: Fallback - inspect the ManagedContent record for any public URL fields (some orgs store absolute URLs already)
     const candidate = findFirstUrl(mcData);
     if (candidate) {
-      logger.info('Using URL found in ManagedContent record as fallback', { electronicMediaId, url: candidate });
+      logger.info('Using URL found in ManagedContent record', { electronicMediaId, url: candidate });
       return candidate;
-    }
-
-    // Step 4: Specific fallback for Shopify CDN paths stored in the ManagedContent `Name` field.
-    // Some ManagedContent records store a relative path like `/s/files/1/0255/8191/2144/products/FILE.jpg`.
-    // The public CDN URL can be constructed by prefixing `https://cdn.shopify.com`.
-    if (typeof nameField === 'string' && /(?:^\/)?s\/files\//i.test(nameField)) {
-      const path = nameField.startsWith('/') ? nameField : `/${nameField}`;
-      const shopifyUrl = `https://cdn.shopify.com${path}`;
-      logger.info('Constructed Shopify CDN URL from ManagedContent Name', { electronicMediaId, url: shopifyUrl });
-      return shopifyUrl;
-    }
-
-    // Step 5: Fallback for S3-hosted images (e.g. Northern Trail Outfitters sample data).
-    // ManagedContent Name field may contain a path like `/northerntrailoutfitters.com/nto-alpine-nutrition/default/images/large/FILE.jpg`
-    // The actual image is hosted at `https://s3.amazonaws.com/northerntrailoutfitters.com/...`
-    if (typeof nameField === 'string' && nameField.includes('/images/')) {
-      // Strip leading slash if present
-      const cleanPath = nameField.startsWith('/') ? nameField.slice(1) : nameField;
-      const s3Url = `https://s3.amazonaws.com/${cleanPath}`;
-      logger.info('Constructed S3 URL from ManagedContent Name', { electronicMediaId, url: s3Url });
-      return s3Url;
-    }
-
-    // Step 6: Generic fallback - if Name field looks like a domain/path, try S3
-    if (typeof nameField === 'string' && nameField.includes('.com/')) {
-      const cleanPath = nameField.startsWith('/') ? nameField.slice(1) : nameField;
-      const s3Url = `https://s3.amazonaws.com/${cleanPath}`;
-      logger.info('Constructed S3 URL from ManagedContent Name (generic)', { electronicMediaId, url: s3Url });
-      return s3Url;
     }
 
     logger.warn('No public URL found for ManagedContent', { 
       electronicMediaId, 
-      nameField, 
       contentKey,
       allFields: Object.keys(mcData)
     });
