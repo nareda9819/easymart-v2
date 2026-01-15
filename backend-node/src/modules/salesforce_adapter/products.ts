@@ -1,6 +1,7 @@
 import { salesforceClient } from './client';
 import { logger } from '../observability/logger';
 import { config } from '../../config/env';
+import { getProductContentVersions, buildProxyImageUrl } from './media';
 
 export interface ProductDTO {
   id: string;
@@ -24,7 +25,12 @@ export async function searchProducts(query: string, limit = 10): Promise<Product
     logger.info('Salesforce Apex REST search response', { status: resp.status, hasData: !!resp.data });
     // Apex returns { products: [...], totalSize: N } according to CommerceSearchRest
     const items = resp.data?.products || [];
-    return (items as any[]).map(normalizeProductFromApex);
+    const products = (items as any[]).map(normalizeProductFromApex);
+    
+    // Enrich products with images from Salesforce Files if they have no images
+    await enrichProductsWithSalesforceImages(products);
+    
+    return products;
   } catch (err) {
     const e = err as any;
     const status = e?.response?.status;
@@ -113,6 +119,50 @@ export async function getAllProducts(limit = 100): Promise<ProductDTO[]> {
   } catch (err) {
     return [];
   }
+}
+
+/**
+ * Enrich products with images from Salesforce Files (ContentVersion).
+ * This fetches images server-side and builds proxy URLs so the frontend
+ * receives Node-hosted URLs instead of direct Salesforce URLs.
+ */
+async function enrichProductsWithSalesforceImages(products: ProductDTO[]): Promise<void> {
+  // Filter products that need images
+  const productsNeedingImages = products.filter(p => !p.image && (!p.images || p.images.length === 0));
+  
+  if (productsNeedingImages.length === 0) {
+    return;
+  }
+  
+  logger.info('Enriching products with Salesforce Files images', { count: productsNeedingImages.length });
+  
+  // Fetch images in parallel (but with reasonable concurrency)
+  const enrichmentPromises = productsNeedingImages.map(async (product) => {
+    try {
+      const contentVersions = await getProductContentVersions(product.id);
+      
+      if (contentVersions.length > 0) {
+        // Build proxy URLs for all images
+        const proxyUrls = contentVersions.map(cv => buildProxyImageUrl(cv.contentVersionId));
+        product.images = proxyUrls;
+        product.image = proxyUrls[0];
+        
+        logger.debug('Enriched product with images', { 
+          productId: product.id, 
+          imageCount: proxyUrls.length 
+        });
+      }
+    } catch (err) {
+      const e = err as any;
+      logger.warn('Failed to fetch images for product', { 
+        productId: product.id, 
+        error: e?.message 
+      });
+      // Don't fail the whole request if one product's images fail
+    }
+  });
+  
+  await Promise.all(enrichmentPromises);
 }
 
 export default { searchProducts, getProductById, getAllProducts };
