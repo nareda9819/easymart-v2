@@ -30,7 +30,10 @@ export async function startServer() {
         return callback(null, true);
       }
       // In production, check against whitelist
-      if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      // Allow explicit whitelist OR common preview/dev hosts (vercel previews and localhost)
+      const isVercelPreview = typeof origin === 'string' && origin.includes('.vercel.app');
+      const isLocalhost = typeof origin === 'string' && origin.includes('localhost');
+      if (allowedOrigins.length === 0 || allowedOrigins.includes(origin) || isVercelPreview || isLocalhost) {
         return callback(null, true);
       }
       // Origin not allowed

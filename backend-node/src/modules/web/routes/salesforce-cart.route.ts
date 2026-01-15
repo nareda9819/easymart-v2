@@ -1,9 +1,38 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { logger } from '../../../modules/observability/logger';
 import * as salesforceCart from '../../salesforce_adapter/cart';
-import { getProductById } from '../../salesforce_adapter/products';
+import { getProductById, searchProducts } from '../../salesforce_adapter/products';
 
 export default async function salesforceCartRoutes(fastify: FastifyInstance) {
+  // Simple in-memory cache for product snapshots to reduce repeated Apex calls
+  // Key: productId, Value: { product, expires }
+  const productCache = new Map<string, { product: any; expires: number }>();
+  const CACHE_TTL_MS = 1000 * 60 * 5; // 5 minutes
+
+  async function resolveProductSnapshot(productId: string) {
+    if (!productId) return null;
+    const now = Date.now();
+    const cached = productCache.get(productId);
+    if (cached && cached.expires > now) return cached.product;
+
+    // 1) Try direct product endpoint
+    let prod = await getProductById(productId);
+    if (!prod) {
+      // 2) Fallback to search endpoint using productId as query (Commerce API surface only)
+      try {
+        const results = await searchProducts(productId, 5);
+        prod = results.find((p: any) => p.id === productId) || results[0] || null;
+      } catch (e) {
+        prod = null;
+      }
+    }
+
+    if (prod) {
+      productCache.set(productId, { product: prod, expires: now + CACHE_TTL_MS });
+    }
+    return prod;
+  }
+
   // Helper: extract display fields from a cart line, supporting several possible shapes
   function extractLineDisplayFields(line: any) {
     // try a variety of common field names and nested shapes
@@ -55,7 +84,7 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
       // Fetch product details and enrich cart items
       const enrichedItems = await Promise.all(
         (cartResponse.lines || []).map(async (line) => {
-          const product = await getProductById(line.productId);
+          const product = await resolveProductSnapshot(line.productId);
           const fallback = extractLineDisplayFields(line as any);
 
           const title = product?.name || fallback.title;
@@ -120,7 +149,7 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
       // Enrich with product details
       const enrichedItems = await Promise.all(
         (cartResponse.lines || []).map(async (line) => {
-          const product = await getProductById(line.productId);
+          const product = await resolveProductSnapshot(line.productId);
           const fallback = extractLineDisplayFields(line as any);
 
           const title = product?.name || fallback.title;
@@ -210,7 +239,7 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
 
       const enrichedItems = await Promise.all(
         (cartResponse.lines || []).map(async (line) => {
-          const product = await getProductById(line.productId);
+          const product = await resolveProductSnapshot(line.productId);
           const fallback = extractLineDisplayFields(line as any);
 
           const title = product?.name || fallback.title;
@@ -281,7 +310,7 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
 
       const enrichedItems = await Promise.all(
         (cartResponse.lines || []).map(async (line) => {
-          const product = await getProductById(line.productId);
+          const product = await resolveProductSnapshot(line.productId);
           const fallback = extractLineDisplayFields(line as any);
 
           const title = product?.name || fallback.title;
