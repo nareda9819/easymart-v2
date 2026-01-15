@@ -1,7 +1,7 @@
 import { salesforceClient } from './client';
 import { logger } from '../observability/logger';
 import { config } from '../../config/env';
-import { getProductElectronicMedia, buildProxyImageUrl } from './media';
+import { batchGetProductImageUrls } from './media';
 
 export interface ProductDTO {
   id: string;
@@ -122,9 +122,9 @@ export async function getAllProducts(limit = 100): Promise<ProductDTO[]> {
 }
 
 /**
- * Enrich products with images from Salesforce Commerce Cloud (ProductMedia -> ElectronicMedia).
- * This fetches media URLs server-side and builds proxy URLs so the frontend
- * receives Node-hosted URLs instead of direct Salesforce URLs.
+ * Enrich products with images from Salesforce CMS.
+ * Uses batch query for efficiency - single SOQL + CMS API calls.
+ * Returns public CDN URLs that can be rendered directly by frontend.
  */
 async function enrichProductsWithSalesforceImages(products: ProductDTO[]): Promise<void> {
   // Filter products that need images
@@ -134,48 +134,31 @@ async function enrichProductsWithSalesforceImages(products: ProductDTO[]): Promi
     return;
   }
   
-  logger.info('Enriching products with Salesforce Commerce images', { count: productsNeedingImages.length });
+  logger.info('Enriching products with Salesforce CMS images', { count: productsNeedingImages.length });
   
-  // Fetch images in parallel (but with reasonable concurrency)
-  const enrichmentPromises = productsNeedingImages.map(async (product) => {
-    try {
-      const electronicMedia = await getProductElectronicMedia(product.id);
-      
-      if (electronicMedia.length > 0) {
-        // Use the MediaUrl from ElectronicMedia - these are typically CDN URLs
-        // Filter out empty URLs and build proxy URLs for any that need proxying
-        const mediaUrls = electronicMedia
-          .filter(em => em.mediaUrl)
-          .map(em => {
-            // If it's already a full URL (starts with http), use proxy for CSP safety
-            if (em.mediaUrl.startsWith('http')) {
-              return buildProxyImageUrl(em.electronicMediaId);
-            }
-            // Otherwise it might be a relative path that needs the instance URL
-            return buildProxyImageUrl(em.electronicMediaId);
-          });
+  try {
+    // Use batch function for efficiency
+    const productIds = productsNeedingImages.map(p => p.id);
+    const imageUrlsMap = await batchGetProductImageUrls(productIds);
+    
+    // Apply images to products
+    for (const product of productsNeedingImages) {
+      const urls = imageUrlsMap.get(product.id);
+      if (urls && urls.length > 0) {
+        product.images = urls;
+        product.image = urls[0];
         
-        if (mediaUrls.length > 0) {
-          product.images = mediaUrls;
-          product.image = mediaUrls[0];
-          
-          logger.debug('Enriched product with images', { 
-            productId: product.id, 
-            imageCount: mediaUrls.length 
-          });
-        }
+        logger.debug('Enriched product with CMS images', { 
+          productId: product.id, 
+          imageCount: urls.length,
+          firstUrl: urls[0]
+        });
       }
-    } catch (err) {
-      const e = err as any;
-      logger.warn('Failed to fetch images for product', { 
-        productId: product.id, 
-        error: e?.message 
-      });
-      // Don't fail the whole request if one product's images fail
     }
-  });
-  
-  await Promise.all(enrichmentPromises);
+  } catch (err) {
+    const e = err as any;
+    logger.warn('Failed to batch fetch images', { error: e?.message });
+  }
 }
 
 export default { searchProducts, getProductById, getAllProducts };

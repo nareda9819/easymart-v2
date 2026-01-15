@@ -29,6 +29,7 @@ export const config = {
   SALESFORCE_PASSWORD: process.env.SALESFORCE_PASSWORD || "",
   SALESFORCE_SECURITY_TOKEN: process.env.SALESFORCE_SECURITY_TOKEN || "",
   SALESFORCE_API_VERSION: process.env.SALESFORCE_API_VERSION || "v57.0",
+  SALESFORCE_WEBSTORE_ID: process.env.SALESFORCE_WEBSTORE_ID || "0ZEdL000002glCfWAI",
   
   // Session
   SESSION_SECRET: process.env.SESSION_SECRET || "easymart-secret-change-in-production",

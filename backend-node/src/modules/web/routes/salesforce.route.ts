@@ -4,7 +4,7 @@ import { getCart } from "../../salesforce_adapter/cart";
 import { logger } from '../../../modules/observability/logger';
 import { salesforceClient } from '../../salesforce_adapter/client';
 import { config } from '../../../config/env';
-import { getProductContentVersions } from '../../salesforce_adapter/media';
+import { getCmsChannelId, getProductImageUrls } from '../../salesforce_adapter/media';
 
 export default async function salesforceTestRoute(app: FastifyInstance) {
   // GET / -> search products: ?q=term&limit=5
@@ -107,13 +107,24 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
         sobjectList = { error: e.message };
       }
       
+      // Try CMS channel and getProductImageUrls
+      let cmsInfo = null;
+      try {
+        const channelId = await getCmsChannelId();
+        const imageUrls = await getProductImageUrls(productId);
+        cmsInfo = { channelId, imageUrls };
+      } catch (e: any) {
+        cmsInfo = { error: e.message };
+      }
+      
       return reply.send({
         ok: true,
         productId,
         productMedia: productMediaResp,
         electronicMediaSobject: emSobjectResp,
         managedContentVariant: mcvResp,
-        mediaRelatedObjects: sobjectList
+        mediaRelatedObjects: sobjectList,
+        cmsInfo
       });
     } catch (err: any) {
       return reply.status(500).send({ ok: false, error: err.message, stack: err.stack });
