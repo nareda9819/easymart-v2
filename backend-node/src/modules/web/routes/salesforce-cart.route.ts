@@ -126,6 +126,25 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
   });
 
   /**
+   * GET /api/salesforce-cart/count
+   * Return only the total item count (sum of quantities) for quick widget updates.
+   */
+  fastify.get('/count', async (_request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const cartResponse = await salesforceCart.getCart();
+      if (!cartResponse.success) {
+        return reply.send({ success: true, item_count: 0 });
+      }
+
+      const total = (cartResponse.lines || []).reduce((sum, l) => sum + (l.quantity || 0), 0);
+      return reply.send({ success: true, item_count: total });
+    } catch (err: any) {
+      logger.error('Failed to fetch cart count', { message: err.message });
+      return reply.code(500).send({ success: false, error: err.message });
+    }
+  });
+
+  /**
    * POST /api/salesforce-cart/update
    * Update item quantity in Salesforce
    */
