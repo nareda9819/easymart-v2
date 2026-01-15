@@ -52,7 +52,7 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
         params: { q: linkSoql },
       });
       
-      // Also try querying ProductMedia (Commerce Cloud specific)
+      // Query ProductMedia (Commerce Cloud specific)
       let productMediaResp = null;
       try {
         const pmSoql = `SELECT Id, ProductId, ElectronicMediaId, ElectronicMediaGroupId FROM ProductMedia WHERE ProductId = '${productId}'`;
@@ -63,6 +63,21 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
         productMediaResp = { error: e.message };
       }
       
+      // Query ElectronicMedia for the linked media
+      let electronicMediaResp = null;
+      try {
+        const pmRecords = productMediaResp?.data?.records || [];
+        if (pmRecords.length > 0) {
+          const emIds = pmRecords.map((r: any) => `'${r.ElectronicMediaId}'`).join(',');
+          const emSoql = `SELECT Id, MediaUrl, AlternateText, MediaAssetId FROM ElectronicMedia WHERE Id IN (${emIds})`;
+          electronicMediaResp = await client.get(`/services/data/${apiVersion}/query`, {
+            params: { q: emSoql },
+          });
+        }
+      } catch (e: any) {
+        electronicMediaResp = { error: e.message };
+      }
+      
       // Also get ContentVersions
       const contentVersions = await getProductContentVersions(productId);
       
@@ -71,6 +86,7 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
         productId,
         contentDocumentLinks: linkResp.data,
         productMedia: productMediaResp?.data || productMediaResp,
+        electronicMedia: electronicMediaResp?.data || electronicMediaResp,
         contentVersions
       });
     } catch (err: any) {

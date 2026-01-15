@@ -1,7 +1,7 @@
 import { salesforceClient } from './client';
 import { logger } from '../observability/logger';
 import { config } from '../../config/env';
-import { getProductContentVersions, buildProxyImageUrl } from './media';
+import { getProductElectronicMedia, buildProxyImageUrl } from './media';
 
 export interface ProductDTO {
   id: string;
@@ -122,8 +122,8 @@ export async function getAllProducts(limit = 100): Promise<ProductDTO[]> {
 }
 
 /**
- * Enrich products with images from Salesforce Files (ContentVersion).
- * This fetches images server-side and builds proxy URLs so the frontend
+ * Enrich products with images from Salesforce Commerce Cloud (ProductMedia -> ElectronicMedia).
+ * This fetches media URLs server-side and builds proxy URLs so the frontend
  * receives Node-hosted URLs instead of direct Salesforce URLs.
  */
 async function enrichProductsWithSalesforceImages(products: ProductDTO[]): Promise<void> {
@@ -134,23 +134,36 @@ async function enrichProductsWithSalesforceImages(products: ProductDTO[]): Promi
     return;
   }
   
-  logger.info('Enriching products with Salesforce Files images', { count: productsNeedingImages.length });
+  logger.info('Enriching products with Salesforce Commerce images', { count: productsNeedingImages.length });
   
   // Fetch images in parallel (but with reasonable concurrency)
   const enrichmentPromises = productsNeedingImages.map(async (product) => {
     try {
-      const contentVersions = await getProductContentVersions(product.id);
+      const electronicMedia = await getProductElectronicMedia(product.id);
       
-      if (contentVersions.length > 0) {
-        // Build proxy URLs for all images
-        const proxyUrls = contentVersions.map(cv => buildProxyImageUrl(cv.contentVersionId));
-        product.images = proxyUrls;
-        product.image = proxyUrls[0];
+      if (electronicMedia.length > 0) {
+        // Use the MediaUrl from ElectronicMedia - these are typically CDN URLs
+        // Filter out empty URLs and build proxy URLs for any that need proxying
+        const mediaUrls = electronicMedia
+          .filter(em => em.mediaUrl)
+          .map(em => {
+            // If it's already a full URL (starts with http), use proxy for CSP safety
+            if (em.mediaUrl.startsWith('http')) {
+              return buildProxyImageUrl(em.electronicMediaId);
+            }
+            // Otherwise it might be a relative path that needs the instance URL
+            return buildProxyImageUrl(em.electronicMediaId);
+          });
         
-        logger.debug('Enriched product with images', { 
-          productId: product.id, 
-          imageCount: proxyUrls.length 
-        });
+        if (mediaUrls.length > 0) {
+          product.images = mediaUrls;
+          product.image = mediaUrls[0];
+          
+          logger.debug('Enriched product with images', { 
+            productId: product.id, 
+            imageCount: mediaUrls.length 
+          });
+        }
       }
     } catch (err) {
       const e = err as any;
