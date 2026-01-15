@@ -63,13 +63,23 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
         productMediaResp = { error: e.message };
       }
       
-      // Query ElectronicMedia for the linked media
+      // Describe ElectronicMedia object to see available fields
+      let emDescribe = null;
+      try {
+        emDescribe = await client.get(`/services/data/${apiVersion}/sobjects/ElectronicMedia/describe`);
+        emDescribe = { fields: (emDescribe.data?.fields || []).map((f: any) => ({ name: f.name, type: f.type })) };
+      } catch (e: any) {
+        emDescribe = { error: e.message };
+      }
+      
+      // Query ElectronicMedia for the linked media - try different fields
       let electronicMediaResp = null;
       try {
         const pmRecords = productMediaResp?.data?.records || [];
         if (pmRecords.length > 0) {
-          const emIds = pmRecords.map((r: any) => `'${r.ElectronicMediaId}'`).join(',');
-          const emSoql = `SELECT Id, MediaUrl, AlternateText, MediaAssetId FROM ElectronicMedia WHERE Id IN (${emIds})`;
+          const firstEmId = pmRecords[0].ElectronicMediaId;
+          // Query a single record to see what fields have values
+          const emSoql = `SELECT Id, Name FROM ElectronicMedia WHERE Id = '${firstEmId}'`;
           electronicMediaResp = await client.get(`/services/data/${apiVersion}/query`, {
             params: { q: emSoql },
           });
@@ -86,6 +96,7 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
         productId,
         contentDocumentLinks: linkResp.data,
         productMedia: productMediaResp?.data || productMediaResp,
+        electronicMediaDescribe: emDescribe,
         electronicMedia: electronicMediaResp?.data || electronicMediaResp,
         contentVersions
       });
