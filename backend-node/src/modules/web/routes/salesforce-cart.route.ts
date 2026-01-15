@@ -2,6 +2,8 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { logger } from '../../../modules/observability/logger';
 import * as salesforceCart from '../../salesforce_adapter/cart';
 import { getProductById, searchProducts } from '../../salesforce_adapter/products';
+import { salesforceClient } from '../../salesforce_adapter/client';
+import { config } from '../../../config/env';
 
 export default async function salesforceCartRoutes(fastify: FastifyInstance) {
   // Simple in-memory cache for product snapshots to reduce repeated Apex calls
@@ -9,19 +11,69 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
   const productCache = new Map<string, { product: any; expires: number }>();
   const CACHE_TTL_MS = 1000 * 60 * 5; // 5 minutes
 
+  /**
+   * Fetch Product2 record + PricebookEntry price via standard Salesforce sObject REST API.
+   * This does NOT require custom Apex — it uses the platform's built-in REST endpoints.
+   */
+  async function getProduct2BySObjectRest(productId: string): Promise<{ name: string; price: string; image?: string } | null> {
+    try {
+      const client = salesforceClient.getClient();
+      const apiVersion = config.SALESFORCE_API_VERSION || 'v57.0';
+
+      // Fetch Product2 Name
+      const prodResp = await client.get(`/services/data/${apiVersion}/sobjects/Product2/${productId}?fields=Id,Name,Description`);
+      const productName = prodResp.data?.Name || 'Unknown Product';
+
+      // Fetch first active PricebookEntry for this product to get price
+      let price = '0';
+      try {
+        const pbeResp = await client.get(
+          `/services/data/${apiVersion}/query?q=${encodeURIComponent(`SELECT UnitPrice FROM PricebookEntry WHERE Product2Id='${productId}' AND IsActive=true LIMIT 1`)}`
+        );
+        if (pbeResp.data?.records?.length > 0) {
+          price = String(pbeResp.data.records[0].UnitPrice ?? '0');
+        }
+      } catch (pbeErr) {
+        // Price lookup failed, keep default 0
+        logger.debug('PricebookEntry lookup failed', { productId });
+      }
+
+      logger.info('Product2 fetched via sObject REST', { productId, productName, price });
+      return { name: productName, price };
+    } catch (err: any) {
+      logger.debug('getProduct2BySObjectRest failed', { productId, message: err?.message });
+      return null;
+    }
+  }
+
   async function resolveProductSnapshot(productId: string) {
     if (!productId) return null;
     const now = Date.now();
     const cached = productCache.get(productId);
     if (cached && cached.expires > now) return cached.product;
 
-    // 1) Try direct product endpoint
+    // 1) Try direct Apex product endpoint
     let prod = await getProductById(productId);
+
+    // 2) Fallback: standard Salesforce sObject REST API (Product2 + PricebookEntry)
     if (!prod) {
-      // 2) Fallback to search endpoint using productId as query (Commerce API surface only)
+      const sobjectResult = await getProduct2BySObjectRest(productId);
+      if (sobjectResult) {
+        prod = {
+          id: productId,
+          name: sobjectResult.name,
+          price: sobjectResult.price,
+          images: [],
+          image: sobjectResult.image || undefined,
+        };
+      }
+    }
+
+    // 3) Last-resort fallback: search endpoint (unlikely to match by ID but try anyway)
+    if (!prod) {
       try {
         const results = await searchProducts(productId, 5);
-        prod = results.find((p: any) => p.id === productId) || results[0] || null;
+        prod = results.find((p: any) => p.id === productId) || null;
       } catch (e) {
         prod = null;
       }
