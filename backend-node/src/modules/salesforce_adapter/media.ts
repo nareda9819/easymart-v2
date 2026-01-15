@@ -84,12 +84,15 @@ async function fetchCmsMediaUrl(channelId: string | null, electronicMediaId: str
     const client = salesforceClient.getClient();
     const apiVersion = config.SALESFORCE_API_VERSION || 'v57.0';
 
-    // Step 1: Query ManagedContent explicitly to get ContentKey and other known fields
-    const mcSoql = `SELECT Id, ContentKey, PrimaryLanguage FROM ManagedContent WHERE Id = '${electronicMediaId}' LIMIT 1`;
+    // Step 1: Query ManagedContent explicitly to get ContentKey, Name and other known fields
+    const mcSoql = `SELECT Id, Name, ContentKey, PrimaryLanguage FROM ManagedContent WHERE Id = '${electronicMediaId}' LIMIT 1`;
     const mcQueryResp = await client.get(`/services/data/${apiVersion}/query`, { params: { q: mcSoql } });
     const mcRecord = (mcQueryResp.data?.records || [])[0] || {};
     const mcData = mcRecord || {};
     const contentKey = mcData.ContentKey;
+
+    // Debug: Log what we got from ManagedContent
+    logger.debug('ManagedContent SOQL result', { electronicMediaId, mcData: JSON.stringify(mcData) });
 
     // Helper: shallow recursive scan of an object/array for the first HTTP(S) URL string
     function findFirstUrl(obj: any, depth = 0): string | null {
@@ -175,7 +178,12 @@ async function fetchCmsMediaUrl(channelId: string | null, electronicMediaId: str
       return s3Url;
     }
 
-    logger.warn('No public URL found for ManagedContent', { electronicMediaId, nameField });
+    logger.warn('No public URL found for ManagedContent', { 
+      electronicMediaId, 
+      nameField, 
+      contentKey,
+      allFields: Object.keys(mcData)
+    });
     return null;
   } catch (err: any) {
     logger.warn('Failed to fetch CMS media', { 
