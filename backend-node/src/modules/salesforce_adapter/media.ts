@@ -89,9 +89,10 @@ async function fetchCmsMediaUrl(channelId: string | null, electronicMediaId: str
     try {
       const mcResp = await client.get(`/services/data/${apiVersion}/sobjects/ManagedContent/${electronicMediaId}`);
       mcData = mcResp.data || {};
-      logger.debug('ManagedContent sObject REST result', { 
+      logger.info('ManagedContent sObject REST result', { 
         electronicMediaId, 
-        fields: Object.keys(mcData).filter(k => !k.startsWith('attributes'))
+        fields: Object.keys(mcData).filter(k => !k.startsWith('attributes')),
+        rawData: JSON.stringify(mcData)
       });
     } catch (mcErr: any) {
       logger.warn('ManagedContent sObject REST failed, trying SOQL', { 
@@ -109,7 +110,7 @@ async function fetchCmsMediaUrl(channelId: string | null, electronicMediaId: str
     // Try multiple possible field names for the media path/URL
     const nameField = mcData.Name || mcData.Title || mcData.MasterLabel || mcData.DeveloperName || '';
 
-    logger.debug('ManagedContent parsed', { electronicMediaId, contentKey, nameField, hasData: Object.keys(mcData).length > 0 });
+    logger.info('ManagedContent parsed', { electronicMediaId, contentKey, nameField, hasData: Object.keys(mcData).length > 0 });
 
     // Helper: shallow recursive scan of an object/array for the first HTTP(S) URL string
     function findFirstUrl(obj: any, depth = 0): string | null {
