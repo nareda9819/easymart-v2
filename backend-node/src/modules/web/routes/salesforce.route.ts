@@ -3,6 +3,8 @@ import { searchProducts } from "../../salesforce_adapter/products";
 import { getCart } from "../../salesforce_adapter/cart";
 import { logger } from '../../../modules/observability/logger';
 import { salesforceClient } from '../../salesforce_adapter/client';
+import { config } from '../../../config/env';
+import { getProductContentVersions } from '../../salesforce_adapter/media';
 
 export default async function salesforceTestRoute(app: FastifyInstance) {
   // GET / -> search products: ?q=term&limit=5
@@ -34,6 +36,45 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
     } catch (err: any) {
       logger.error('Failed to fetch raw Apex response', { message: err.message, status: err?.response?.status });
       return reply.status(500).send({ ok: false, error: err.message });
+    }
+  });
+
+  // GET /debug-files/:productId -> check ContentDocumentLink for a product
+  app.get("/debug-files/:productId", async (req, reply) => {
+    const productId = (req.params as any).productId;
+    try {
+      const client = salesforceClient.getClient();
+      const apiVersion = config.SALESFORCE_API_VERSION || 'v57.0';
+      
+      // Query ContentDocumentLink
+      const linkSoql = `SELECT ContentDocumentId FROM ContentDocumentLink WHERE LinkedEntityId = '${productId}'`;
+      const linkResp = await client.get(`/services/data/${apiVersion}/query`, {
+        params: { q: linkSoql },
+      });
+      
+      // Also try querying ProductMedia (Commerce Cloud specific)
+      let productMediaResp = null;
+      try {
+        const pmSoql = `SELECT Id, ProductId, ElectronicMediaId, ElectronicMediaGroupId FROM ProductMedia WHERE ProductId = '${productId}'`;
+        productMediaResp = await client.get(`/services/data/${apiVersion}/query`, {
+          params: { q: pmSoql },
+        });
+      } catch (e: any) {
+        productMediaResp = { error: e.message };
+      }
+      
+      // Also get ContentVersions
+      const contentVersions = await getProductContentVersions(productId);
+      
+      return reply.send({
+        ok: true,
+        productId,
+        contentDocumentLinks: linkResp.data,
+        productMedia: productMediaResp?.data || productMediaResp,
+        contentVersions
+      });
+    } catch (err: any) {
+      return reply.status(500).send({ ok: false, error: err.message, stack: err.stack });
     }
   });
 
