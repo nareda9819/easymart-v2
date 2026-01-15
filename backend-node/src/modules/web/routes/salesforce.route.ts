@@ -63,29 +63,29 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
         productMediaResp = { error: e.message };
       }
       
-      // Describe ElectronicMedia object to see available fields
-      let emDescribe = null;
+      // Try to get webstoreId from WebStore object
+      let webstoreId = null;
+      let webstoreResp = null;
       try {
-        emDescribe = await client.get(`/services/data/${apiVersion}/sobjects/ElectronicMedia/describe`);
-        emDescribe = { fields: (emDescribe.data?.fields || []).map((f: any) => ({ name: f.name, type: f.type })) };
+        const wsSoql = `SELECT Id, Name FROM WebStore LIMIT 1`;
+        webstoreResp = await client.get(`/services/data/${apiVersion}/query`, {
+          params: { q: wsSoql },
+        });
+        webstoreId = webstoreResp.data?.records?.[0]?.Id;
       } catch (e: any) {
-        emDescribe = { error: e.message };
+        webstoreResp = { error: e.message };
       }
       
-      // Query ElectronicMedia for the linked media - try different fields
-      let electronicMediaResp = null;
-      try {
-        const pmRecords = productMediaResp?.data?.records || [];
-        if (pmRecords.length > 0) {
-          const firstEmId = pmRecords[0].ElectronicMediaId;
-          // Query a single record to see what fields have values
-          const emSoql = `SELECT Id, Name FROM ElectronicMedia WHERE Id = '${firstEmId}'`;
-          electronicMediaResp = await client.get(`/services/data/${apiVersion}/query`, {
-            params: { q: emSoql },
+      // Try Connect API to get product with images
+      let connectProductResp = null;
+      if (webstoreId) {
+        try {
+          connectProductResp = await client.get(`/services/data/${apiVersion}/commerce/webstores/${webstoreId}/products/${productId}`, {
+            params: { fields: 'id,name,defaultImage,mediaGroups' }
           });
+        } catch (e: any) {
+          connectProductResp = { error: e.message };
         }
-      } catch (e: any) {
-        electronicMediaResp = { error: e.message };
       }
       
       // Also get ContentVersions
@@ -94,10 +94,10 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
       return reply.send({
         ok: true,
         productId,
+        webstoreId,
         contentDocumentLinks: linkResp.data,
         productMedia: productMediaResp?.data || productMediaResp,
-        electronicMediaDescribe: emDescribe,
-        electronicMedia: electronicMediaResp?.data || electronicMediaResp,
+        connectProduct: connectProductResp?.data || connectProductResp,
         contentVersions
       });
     } catch (err: any) {
