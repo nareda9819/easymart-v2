@@ -114,17 +114,18 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
         const imageUrls = await getProductImageUrls(productId);
         
         // Also try direct CMS API call for debugging
-        let directCmsTest = null;
+        let directCmsTest: any = {};
         if (channelId && productMediaResp?.record?.ElectronicMediaId) {
           const emId = productMediaResp.record.ElectronicMediaId;
+          
+          // Try the CMS Delivery API directly
           try {
-            // Try the CMS Delivery API directly
             const cmsResp = await client.get(
               `/services/data/${apiVersion}/connect/cms/delivery/channels/${channelId}/media/${emId}`
             );
-            directCmsTest = { status: 'success', data: cmsResp.data };
+            directCmsTest.cmsDeliveryApi = { status: 'success', data: cmsResp.data };
           } catch (cmsErr: any) {
-            directCmsTest = { 
+            directCmsTest.cmsDeliveryApi = { 
               status: 'error', 
               error: cmsErr.message, 
               responseStatus: cmsErr.response?.status,
@@ -132,15 +133,39 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
             };
           }
           
-          // Also try querying ManagedContent directly
+          // Try querying ManagedContent sobject by ID
           try {
-            const mcSoql = `SELECT Id, Name, ManagedContentSpaceId, CreatedById FROM ManagedContent WHERE Id = '${emId}'`;
-            const mcResp = await client.get(`/services/data/${apiVersion}/query`, {
-              params: { q: mcSoql },
-            });
-            directCmsTest = { ...directCmsTest, managedContentQuery: mcResp.data };
+            const mcResp = await client.get(`/services/data/${apiVersion}/sobjects/ManagedContent/${emId}`);
+            directCmsTest.managedContentSobject = mcResp.data;
           } catch (mcErr: any) {
-            directCmsTest = { ...directCmsTest, managedContentQueryError: mcErr.message };
+            directCmsTest.managedContentSobjectError = { error: mcErr.message, status: mcErr.response?.status };
+          }
+          
+          // Try querying ManagedContentInfo  
+          try {
+            const mciResp = await client.get(`/services/data/${apiVersion}/sobjects/ManagedContentInfo/${emId}`);
+            directCmsTest.managedContentInfo = mciResp.data;
+          } catch (mciErr: any) {
+            directCmsTest.managedContentInfoError = { error: mciErr.message, status: mciErr.response?.status };
+          }
+          
+          // Try listing all content in the channel
+          try {
+            const contentListResp = await client.get(
+              `/services/data/${apiVersion}/connect/cms/delivery/channels/${channelId}/contents?pageSize=5`
+            );
+            directCmsTest.channelContents = contentListResp.data;
+          } catch (clErr: any) {
+            directCmsTest.channelContentsError = { error: clErr.message, status: clErr.response?.status };
+          }
+          
+          // Try describing ManagedContent
+          try {
+            const descResp = await client.get(`/services/data/${apiVersion}/sobjects/ManagedContent/describe`);
+            const fields = (descResp.data?.fields || []).map((f: any) => f.name);
+            directCmsTest.managedContentFields = fields;
+          } catch (dErr: any) {
+            directCmsTest.managedContentDescribeError = dErr.message;
           }
         }
         
