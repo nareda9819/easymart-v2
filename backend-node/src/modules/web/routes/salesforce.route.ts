@@ -167,7 +167,7 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
 
             // Also explicitly query ManagedContent with SOQL to fetch the Name field (useful for Shopify path fallback)
             try {
-              const mcSoql = `SELECT Id, Name, ContentKey FROM ManagedContent WHERE Id = '${emId}' LIMIT 1`;
+              const mcSoql = `SELECT Id, ContentKey, PrimaryLanguage FROM ManagedContent WHERE Id = '${emId}' LIMIT 1`;
               const mcQueryResp = await client.get(`/services/data/${apiVersion}/query`, { params: { q: mcSoql } });
               directCmsTest.managedContentQuery = mcQueryResp.data?.records?.[0] || null;
             } catch (mcQErr: any) {

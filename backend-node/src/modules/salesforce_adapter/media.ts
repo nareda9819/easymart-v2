@@ -84,8 +84,8 @@ async function fetchCmsMediaUrl(channelId: string | null, electronicMediaId: str
     const client = salesforceClient.getClient();
     const apiVersion = config.SALESFORCE_API_VERSION || 'v57.0';
 
-    // Step 1: Query ManagedContent explicitly to ensure we get the `Name` field
-    const mcSoql = `SELECT Id, Name, ContentKey FROM ManagedContent WHERE Id = '${electronicMediaId}' LIMIT 1`;
+    // Step 1: Query ManagedContent explicitly to get ContentKey and other known fields
+    const mcSoql = `SELECT Id, ContentKey, PrimaryLanguage FROM ManagedContent WHERE Id = '${electronicMediaId}' LIMIT 1`;
     const mcQueryResp = await client.get(`/services/data/${apiVersion}/query`, { params: { q: mcSoql } });
     const mcRecord = (mcQueryResp.data?.records || [])[0] || {};
     const mcData = mcRecord || {};
