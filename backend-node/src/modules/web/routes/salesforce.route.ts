@@ -116,10 +116,15 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
           const pmList = pmListResp.data?.records || [];
           const emIds = pmList.map((r: any) => r.ElectronicMediaId).filter(Boolean);
           if (emIds.length > 0) {
-            const idList = emIds.map((id: string) => `'${id}'`).join(',');
-            const mcSoql = `SELECT Id, Name FROM ManagedContent WHERE Id IN (${idList})`;
-            const mcResp = await client.get(`/services/data/${apiVersion}/query`, { params: { q: mcSoql } });
-            managedContentNames = mcResp.data?.records || [];
+            managedContentNames = [];
+            for (const emId of emIds) {
+              try {
+                const mcSobj = await client.get(`/services/data/${apiVersion}/sobjects/ManagedContent/${emId}`);
+                managedContentNames.push(mcSobj.data || null);
+              } catch (e: any) {
+                managedContentNames.push({ id: emId, error: e.message, status: e.response?.status });
+              }
+            }
           } else {
             managedContentNames = [];
           }
