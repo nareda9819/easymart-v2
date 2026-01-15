@@ -47,7 +47,10 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
 
       // Get updated cart from Salesforce
       const cartResponse = await salesforceCart.getCart();
-      logger.info('Raw cartResponse.lines (add)', { lines: cartResponse.lines });
+      try {
+        logger.info('Raw cartResponse.lines (add)', { lines: cartResponse.lines });
+        logger.info('Raw cartResponse.lines (add)-string', { lines: JSON.stringify(cartResponse.lines || []) });
+      } catch (e) {}
 
       // Fetch product details and enrich cart items
       const enrichedItems = await Promise.all(
@@ -65,7 +68,9 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
             title,
             price,
             quantity: line.quantity,
-            image
+            image,
+            // Include raw line for debugging (temporary)
+            raw_line: line
           } as any;
         })
       );
