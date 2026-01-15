@@ -46,79 +46,74 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
       const client = salesforceClient.getClient();
       const apiVersion = config.SALESFORCE_API_VERSION || 'v57.0';
       
-      // Query ProductMedia (Commerce Cloud specific)
+      // Query ProductMedia with ALL fields
       let productMediaResp = null;
       try {
-        const pmSoql = `SELECT Id, ProductId, ElectronicMediaId, ElectronicMediaGroupId FROM ProductMedia WHERE ProductId = '${productId}'`;
+        // First describe ProductMedia to get all fields
+        const pmDescResp = await client.get(`/services/data/${apiVersion}/sobjects/ProductMedia/describe`);
+        const pmFields = (pmDescResp.data?.fields || []).map((f: any) => f.name).join(', ');
+        
+        // Query with all fields
+        const pmSoql = `SELECT ${pmFields} FROM ProductMedia WHERE ProductId = '${productId}' LIMIT 1`;
         productMediaResp = await client.get(`/services/data/${apiVersion}/query`, {
           params: { q: pmSoql },
         });
+        productMediaResp = { allFields: pmFields, record: productMediaResp.data?.records?.[0] };
       } catch (e: any) {
         productMediaResp = { error: e.message };
       }
       
-      // Try to get webstoreId from WebStore object
-      let webstoreId = null;
+      // Get the ElectronicMediaId and try to fetch it directly via sobject API
+      let emSobjectResp = null;
       try {
-        const wsSoql = `SELECT Id, Name FROM WebStore LIMIT 1`;
-        const webstoreResp = await client.get(`/services/data/${apiVersion}/query`, {
-          params: { q: wsSoql },
-        });
-        webstoreId = webstoreResp.data?.records?.[0]?.Id;
-      } catch (e: any) {
-        // ignore
-      }
-      
-      // Query ManagedContentVariant - this is what CMS uses for media
-      let managedContentResp = null;
-      try {
-        const pmRecords = productMediaResp?.data?.records || [];
-        if (pmRecords.length > 0) {
-          const firstEmId = pmRecords[0].ElectronicMediaId;
-          // Try querying ManagedContentVariant
-          const mcSoql = `SELECT Id, Name, ManagedContentId, ContentKey FROM ManagedContentVariant WHERE Id = '${firstEmId}'`;
-          managedContentResp = await client.get(`/services/data/${apiVersion}/query`, {
-            params: { q: mcSoql },
-          });
+        const pmRecord = productMediaResp?.record;
+        if (pmRecord?.ElectronicMediaId) {
+          const emId = pmRecord.ElectronicMediaId;
+          // Try to get the sobject directly
+          emSobjectResp = await client.get(`/services/data/${apiVersion}/sobjects/ElectronicMedia/${emId}`);
+          emSobjectResp = emSobjectResp.data;
         }
       } catch (e: any) {
-        managedContentResp = { error: e.message };
+        emSobjectResp = { error: e.message };
       }
       
-      // Try to get direct CMS content endpoint  
-      let cmsContentResp = null;
-      if (webstoreId) {
-        try {
-          const pmRecords = productMediaResp?.data?.records || [];
-          if (pmRecords.length > 0) {
-            const firstEmId = pmRecords[0].ElectronicMediaId;
-            // Try the CMS endpoint for managed content
-            cmsContentResp = await client.get(`/services/data/${apiVersion}/connect/cms/contents/${firstEmId}`);
-          }
-        } catch (e: any) {
-          cmsContentResp = { error: e.message };
-        }
-      }
-      
-      // Query Product2 fields directly to see if image URL is in a field
-      let product2Resp = null;
+      // Try describing ElectronicMedia using different object type prefix
+      // 20Y prefix is ManagedContentVariant
+      let mcvResp = null;
       try {
-        const p2Soql = `SELECT Id, Name, Description, (SELECT Id, ElectronicMediaId FROM ProductMedia) FROM Product2 WHERE Id = '${productId}'`;
-        product2Resp = await client.get(`/services/data/${apiVersion}/query`, {
-          params: { q: p2Soql },
-        });
+        const pmRecord = productMediaResp?.record;
+        if (pmRecord?.ElectronicMediaId) {
+          const emId = pmRecord.ElectronicMediaId;
+          // Try ManagedContentVariant
+          mcvResp = await client.get(`/services/data/${apiVersion}/sobjects/ManagedContentVariant/${emId}`);
+          mcvResp = mcvResp.data;
+        }
       } catch (e: any) {
-        product2Resp = { error: e.message };
+        mcvResp = { error: e.message };
+      }
+      
+      // List all sobjects to find what 20Y prefix is
+      let sobjectList = null;
+      try {
+        const resp = await client.get(`/services/data/${apiVersion}/sobjects`);
+        // Find objects that might be related to media
+        const mediaRelated = (resp.data?.sobjects || []).filter((s: any) => 
+          s.name.toLowerCase().includes('media') || 
+          s.name.toLowerCase().includes('content') ||
+          s.keyPrefix === '20Y'
+        ).map((s: any) => ({ name: s.name, keyPrefix: s.keyPrefix }));
+        sobjectList = mediaRelated;
+      } catch (e: any) {
+        sobjectList = { error: e.message };
       }
       
       return reply.send({
         ok: true,
         productId,
-        webstoreId,
-        productMedia: productMediaResp?.data || productMediaResp,
-        managedContent: managedContentResp?.data || managedContentResp,
-        cmsContent: cmsContentResp?.data || cmsContentResp,
-        product2: product2Resp?.data || product2Resp
+        productMedia: productMediaResp,
+        electronicMediaSobject: emSobjectResp,
+        managedContentVariant: mcvResp,
+        mediaRelatedObjects: sobjectList
       });
     } catch (err: any) {
       return reply.status(500).send({ ok: false, error: err.message, stack: err.stack });
