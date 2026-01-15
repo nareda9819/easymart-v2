@@ -104,7 +104,69 @@ async function fetchCmsMediaUrl(channelId: string | null, electronicMediaId: str
       });
     }
 
-    // Step 2: Query ManagedContentVariant to get the actual media URL
+    // Step 2: Try CMS Delivery API with ContentKey FIRST (most reliable)
+    if (contentKey && channelId) {
+      // Try contents endpoint (returns contentBody with source URL for images)
+      try {
+        const contentsResp = await client.get(
+          `/services/data/${apiVersion}/connect/cms/delivery/channels/${channelId}/contents/${contentKey}`
+        );
+        
+        const data = contentsResp.data || {};
+        const contentBody = data.contentBody || {};
+        logger.info('CMS contents response', { 
+          contentKey, 
+          type: data.type,
+          bodyKeys: Object.keys(contentBody),
+          fullBody: JSON.stringify(contentBody)
+        });
+        
+        // For cms_image type, the URL is in contentBody.source.unauthenticatedUrl
+        const sourceUrl = contentBody.source?.unauthenticatedUrl || 
+                         contentBody.source?.url ||
+                         contentBody.unauthenticatedUrl ||
+                         contentBody.url;
+        if (sourceUrl) {
+          logger.info('Got URL from CMS contents body', { contentKey, sourceUrl });
+          return sourceUrl;
+        }
+      } catch (err: any) {
+        logger.info('CMS delivery contents API failed', { 
+          electronicMediaId, 
+          contentKey, 
+          status: err.response?.status,
+          error: err.message,
+          data: JSON.stringify(err.response?.data)
+        });
+      }
+
+      // Try media endpoint (alternative for direct media access)
+      try {
+        const cmsResp = await client.get(
+          `/services/data/${apiVersion}/connect/cms/delivery/channels/${channelId}/media/${contentKey}`
+        );
+
+        const publicUrl = cmsResp.data?.unauthenticatedUrl || cmsResp.data?.url;
+        logger.info('CMS media response', { 
+          contentKey, 
+          responseKeys: Object.keys(cmsResp.data || {}),
+          publicUrl 
+        });
+        
+        if (publicUrl) {
+          return publicUrl;
+        }
+      } catch (err: any) {
+        logger.info('CMS delivery media API failed', { 
+          electronicMediaId, 
+          contentKey, 
+          status: err.response?.status,
+          error: err.message
+        });
+      }
+    }
+
+    // Step 3: Query ManagedContentVariant to get the actual media URL (fallback)
     // ManagedContentVariant stores the body/URL for CMS media items
     try {
       const variantSoql = `SELECT Id, Name, Url, VariantType, ManagedContentId FROM ManagedContentVariant WHERE ManagedContentId = '${electronicMediaId}' LIMIT 1`;
@@ -147,46 +209,6 @@ async function fetchCmsMediaUrl(channelId: string | null, electronicMediaId: str
         status: varErr.response?.status,
         error: varErr.message 
       });
-    }
-
-    // Step 3: Try CMS Delivery API with ContentKey (if available and channelId exists)
-    if (contentKey && channelId) {
-      try {
-        // Try media endpoint first
-        const cmsResp = await client.get(
-          `/services/data/${apiVersion}/connect/cms/delivery/channels/${channelId}/media/${contentKey}`
-        );
-
-        const publicUrl = cmsResp.data?.unauthenticatedUrl || cmsResp.data?.url;
-        if (publicUrl) {
-          logger.info('Got CMS media URL via delivery API', { contentKey, publicUrl });
-          return publicUrl;
-        }
-
-        logger.info('CMS delivery media returned no URL', { contentKey, responseKeys: Object.keys(cmsResp.data || {}) });
-      } catch (err: any) {
-        logger.debug('CMS delivery media API failed', { electronicMediaId, contentKey, status: err.response?.status });
-      }
-
-      // Try contents endpoint (for non-media CMS items)
-      try {
-        const contentsResp = await client.get(
-          `/services/data/${apiVersion}/connect/cms/delivery/channels/${channelId}/contents/${contentKey}`
-        );
-        
-        const contentBody = contentsResp.data?.contentBody || {};
-        logger.info('CMS contents response', { contentKey, bodyKeys: Object.keys(contentBody) });
-        
-        // Look for source URL in content body
-        const sourceUrl = contentBody.source?.unauthenticatedUrl || contentBody.source?.url ||
-                         contentBody.altText?.unauthenticatedUrl || contentBody.url;
-        if (sourceUrl) {
-          logger.info('Got URL from CMS contents body', { contentKey, sourceUrl });
-          return sourceUrl;
-        }
-      } catch (err: any) {
-        logger.debug('CMS delivery contents API failed', { electronicMediaId, contentKey, status: err.response?.status });
-      }
     }
 
     // Step 4: Fallback - scan ManagedContent record for any URL
