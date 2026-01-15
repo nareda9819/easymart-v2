@@ -4,6 +4,19 @@ import * as salesforceCart from '../../salesforce_adapter/cart';
 import { getProductById } from '../../salesforce_adapter/products';
 
 export default async function salesforceCartRoutes(fastify: FastifyInstance) {
+  // Helper: extract display fields from a cart line, supporting several possible shapes
+  function extractLineDisplayFields(line: any) {
+    // try a variety of common field names and nested shapes
+    const title = line?.productName || line?.name || line?.title || line?.label || (line?.product && (line.product.name || line.product.title || line.product.productName)) || 'Unknown Product';
+
+    const priceRaw = line?.unitPrice ?? line?.price ?? line?.amount ?? (line?.product && (line.product.price || line.product.unitPrice)) ?? '0';
+    const price = typeof priceRaw === 'number' ? String(priceRaw) : String(priceRaw || '0');
+
+    const image = line?.imageUrl || line?.image || (line?.product && (line.product.image || (Array.isArray(line.product.images) ? line.product.images[0] : undefined))) || null;
+
+    return { title, price, image };
+  }
+
   /**
    * POST /api/salesforce-cart/add
    * Add item to Salesforce cart (calls real Apex)
@@ -34,18 +47,17 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
 
       // Get updated cart from Salesforce
       const cartResponse = await salesforceCart.getCart();
-      logger.debug('Raw cartResponse.lines (add)', { lines: cartResponse.lines });
+      logger.info('Raw cartResponse.lines (add)', { lines: cartResponse.lines });
 
       // Fetch product details and enrich cart items
       const enrichedItems = await Promise.all(
         (cartResponse.lines || []).map(async (line) => {
           const product = await getProductById(line.productId);
+          const fallback = extractLineDisplayFields(line as any);
 
-          // Prefer product details from product lookup; if missing, fall back to values available on the cart line itself
-          const title = product?.name || line.productName || line.name || line.title || 'Unknown Product';
-          const priceRaw = product?.price ?? line.unitPrice ?? line.price ?? '0';
-          const price = typeof priceRaw === 'number' ? String(priceRaw) : String(priceRaw || '0');
-          const image = product?.images?.[0] || line.imageUrl || line.image || null;
+          const title = product?.name || fallback.title;
+          const price = product?.price ?? fallback.price;
+          const image = product?.images?.[0] || fallback.image || null;
 
           return {
             product_id: line.productId,
@@ -54,7 +66,7 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
             price,
             quantity: line.quantity,
             image
-          };
+          } as any;
         })
       );
 
@@ -91,7 +103,7 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
 
       // Get cart from Apex
       const cartResponse = await salesforceCart.getCart();
-      logger.debug('Raw cartResponse.lines (get)', { lines: cartResponse.lines });
+      logger.info('Raw cartResponse.lines (get)', { lines: cartResponse.lines });
 
       if (!cartResponse.success) {
         return reply.send({
@@ -104,11 +116,11 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
       const enrichedItems = await Promise.all(
         (cartResponse.lines || []).map(async (line) => {
           const product = await getProductById(line.productId);
+          const fallback = extractLineDisplayFields(line as any);
 
-          const title = product?.name || line.productName || line.name || line.title || 'Unknown Product';
-          const priceRaw = product?.price ?? line.unitPrice ?? line.price ?? '0';
-          const price = typeof priceRaw === 'number' ? String(priceRaw) : String(priceRaw || '0');
-          const image = product?.images?.[0] || line.imageUrl || line.image || null;
+          const title = product?.name || fallback.title;
+          const price = product?.price ?? fallback.price;
+          const image = product?.images?.[0] || fallback.image || null;
 
           return {
             product_id: line.productId,
@@ -117,7 +129,7 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
             price,
             quantity: line.quantity,
             image
-          };
+          } as any;
         })
       );
 
@@ -189,16 +201,16 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
 
       // Get updated cart
       const cartResponse = await salesforceCart.getCart();
-      logger.debug('Raw cartResponse.lines (update)', { lines: cartResponse.lines });
+      logger.info('Raw cartResponse.lines (update)', { lines: cartResponse.lines });
 
       const enrichedItems = await Promise.all(
         (cartResponse.lines || []).map(async (line) => {
           const product = await getProductById(line.productId);
+          const fallback = extractLineDisplayFields(line as any);
 
-          const title = product?.name || line.productName || line.name || line.title || 'Unknown Product';
-          const priceRaw = product?.price ?? line.unitPrice ?? line.price ?? '0';
-          const price = typeof priceRaw === 'number' ? String(priceRaw) : String(priceRaw || '0');
-          const image = product?.images?.[0] || line.imageUrl || line.image || null;
+          const title = product?.name || fallback.title;
+          const price = product?.price ?? fallback.price;
+          const image = product?.images?.[0] || fallback.image || null;
 
           return {
             product_id: line.productId,
@@ -207,7 +219,7 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
             price,
             quantity: line.quantity,
             image
-          };
+          } as any;
         })
       );
 
@@ -260,16 +272,16 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
 
       // Get updated cart
       const cartResponse = await salesforceCart.getCart();
-      logger.debug('Raw cartResponse.lines (remove)', { lines: cartResponse.lines });
+      logger.info('Raw cartResponse.lines (remove)', { lines: cartResponse.lines });
 
       const enrichedItems = await Promise.all(
         (cartResponse.lines || []).map(async (line) => {
           const product = await getProductById(line.productId);
+          const fallback = extractLineDisplayFields(line as any);
 
-          const title = product?.name || line.productName || line.name || line.title || 'Unknown Product';
-          const priceRaw = product?.price ?? line.unitPrice ?? line.price ?? '0';
-          const price = typeof priceRaw === 'number' ? String(priceRaw) : String(priceRaw || '0');
-          const image = product?.images?.[0] || line.imageUrl || line.image || null;
+          const title = product?.name || fallback.title;
+          const price = product?.price ?? fallback.price;
+          const image = product?.images?.[0] || fallback.image || null;
 
           return {
             product_id: line.productId,
@@ -278,7 +290,7 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
             price,
             quantity: line.quantity,
             image
-          };
+          } as any;
         })
       );
 
