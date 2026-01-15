@@ -108,7 +108,26 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
       }
       
       // Try CMS channel and getProductImageUrls
-      let cmsInfo = null;
+        // Also gather ManagedContent Name(s) for ProductMedia entries (Shopify path may be stored in Name)
+        let managedContentNames: any = null;
+        try {
+          const pmListSoql = `SELECT ElectronicMediaId FROM ProductMedia WHERE ProductId = '${productId}'`;
+          const pmListResp = await client.get(`/services/data/${apiVersion}/query`, { params: { q: pmListSoql } });
+          const pmList = pmListResp.data?.records || [];
+          const emIds = pmList.map((r: any) => r.ElectronicMediaId).filter(Boolean);
+          if (emIds.length > 0) {
+            const idList = emIds.map((id: string) => `'${id}'`).join(',');
+            const mcSoql = `SELECT Id, Name FROM ManagedContent WHERE Id IN (${idList})`;
+            const mcResp = await client.get(`/services/data/${apiVersion}/query`, { params: { q: mcSoql } });
+            managedContentNames = mcResp.data?.records || [];
+          } else {
+            managedContentNames = [];
+          }
+        } catch (e: any) {
+          managedContentNames = { error: e.message };
+        }
+
+        let cmsInfo = null;
       try {
         const channelId = await getCmsChannelId();
         const imageUrls = await getProductImageUrls(productId);
@@ -183,14 +202,15 @@ export default async function salesforceTestRoute(app: FastifyInstance) {
         cmsInfo = { error: e.message };
       }
       
-      return reply.send({
+        return reply.send({
         ok: true,
         productId,
         productMedia: productMediaResp,
         electronicMediaSobject: emSobjectResp,
         managedContentVariant: mcvResp,
         mediaRelatedObjects: sobjectList,
-        cmsInfo
+          managedContentNames,
+          cmsInfo
       });
     } catch (err: any) {
       return reply.status(500).send({ ok: false, error: err.message, stack: err.stack });
