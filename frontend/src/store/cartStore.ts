@@ -10,12 +10,13 @@ interface CartStore {
   error: string | null;
   
     // Actions
-    addToCart: (productId: string, quantity?: number) => Promise<void>;
+      addToCart: (productId: string, quantity?: number) => Promise<void>;
     increaseQuantity: (productId: string) => Promise<void>;
     decreaseQuantity: (productId: string) => Promise<void>;
     removeFromCart: (productId: string) => Promise<void>;
     clearCart: () => Promise<void>;
     getCart: () => Promise<void>;
+      refreshItemCount: () => Promise<void>;
     clearError: () => void;
 
   
@@ -50,6 +51,18 @@ export const useCartStore = create<CartStore>()(
         } catch (error: any) {
           set({ error: error.message, isLoading: false });
           throw error;
+        }
+      },
+
+      // Lightweight refresh of only the `itemCount` using server-side count endpoint
+      refreshItemCount: async () => {
+        try {
+          const resp = await cartApi.getCount();
+          if (resp && resp.success) {
+            set({ itemCount: resp.item_count });
+          }
+        } catch (e) {
+          // ignore errors for lightweight count
         }
       },
 
