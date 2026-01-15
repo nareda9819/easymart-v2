@@ -114,11 +114,11 @@ async function fetchCmsMediaUrl(channelId: string | null, electronicMediaId: str
         
         const data = contentsResp.data || {};
         const contentBody = data.contentBody || {};
-        logger.info('CMS contents response', { 
+        logger.info('CMS contents SUCCESS', { 
           contentKey, 
           type: data.type,
           bodyKeys: Object.keys(contentBody),
-          fullBody: JSON.stringify(contentBody)
+          fullResponse: JSON.stringify(data).substring(0, 500)
         });
         
         // For cms_image type, the URL is in contentBody.source.unauthenticatedUrl
@@ -131,12 +131,13 @@ async function fetchCmsMediaUrl(channelId: string | null, electronicMediaId: str
           return sourceUrl;
         }
       } catch (err: any) {
-        logger.info('CMS delivery contents API failed', { 
+        logger.warn('CMS contents FAILED', { 
           electronicMediaId, 
           contentKey, 
           status: err.response?.status,
-          error: err.message,
-          data: JSON.stringify(err.response?.data)
+          statusText: err.response?.statusText,
+          errorMsg: err.message,
+          responseData: JSON.stringify(err.response?.data || {}).substring(0, 300)
         });
       }
 
@@ -146,24 +147,41 @@ async function fetchCmsMediaUrl(channelId: string | null, electronicMediaId: str
           `/services/data/${apiVersion}/connect/cms/delivery/channels/${channelId}/media/${contentKey}`
         );
 
-        const publicUrl = cmsResp.data?.unauthenticatedUrl || cmsResp.data?.url;
-        logger.info('CMS media response', { 
+        logger.info('CMS media SUCCESS', { 
           contentKey, 
-          responseKeys: Object.keys(cmsResp.data || {}),
-          publicUrl 
+          fullResponse: JSON.stringify(cmsResp.data || {}).substring(0, 500)
         });
         
+        const publicUrl = cmsResp.data?.unauthenticatedUrl || cmsResp.data?.url;
         if (publicUrl) {
           return publicUrl;
         }
       } catch (err: any) {
-        logger.info('CMS delivery media API failed', { 
+        logger.warn('CMS media FAILED', { 
           electronicMediaId, 
           contentKey, 
           status: err.response?.status,
-          error: err.message
+          statusText: err.response?.statusText,
+          errorMsg: err.message
         });
       }
+    }
+
+    // Step 2b: Try querying ManagedContentSpace to find content source
+    try {
+      const spaceId = mcData.AuthoredManagedContentSpaceId;
+      if (spaceId && contentKey) {
+        logger.info('Trying ManagedContentSpace approach', { spaceId, contentKey });
+        
+        // Query the space to understand the content structure
+        const spaceResp = await client.get(`/services/data/${apiVersion}/sobjects/ManagedContentSpace/${spaceId}`);
+        logger.info('ManagedContentSpace result', { 
+          spaceId, 
+          spaceData: JSON.stringify(spaceResp.data || {}).substring(0, 300)
+        });
+      }
+    } catch (spaceErr: any) {
+      logger.debug('ManagedContentSpace query failed', { error: spaceErr.message });
     }
 
     // Step 3: Query ManagedContentVariant to get the actual media URL (fallback)
