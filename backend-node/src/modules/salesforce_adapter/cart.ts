@@ -45,10 +45,11 @@ export interface ApexDeleteCartItemResponse {
 /**
  * Get cart from Salesforce using Apex REST CartApi
  */
-export async function getCart(): Promise<ApexGetCartResponse> {
+export async function getCart(buyerAccountId?: string): Promise<ApexGetCartResponse> {
   try {
     const client = salesforceClient.getClient();
-    const resp = await client.get('/services/apexrest/CartApi');
+    const params = buyerAccountId ? { buyerAccountId } : {};
+    const resp = await client.get('/services/apexrest/CartApi', { params });
     logger.info('Salesforce getCart response', { success: resp.data?.success, lineCount: resp.data?.lines?.length });
     return resp.data;
   } catch (error: any) {

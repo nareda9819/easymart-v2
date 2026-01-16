@@ -183,13 +183,14 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
    */
   fastify.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { session_id } = request.query as any;
+      const { session_id, buyer_account_id } = request.query as any;
 
-      logger.info('Getting Salesforce cart', { session_id });
+      logger.info('Getting Salesforce cart', { session_id, buyer_account_id });
 
-      // Get cart from Apex
-      const cartResponse = await salesforceCart.getCart();
-      logger.info('Raw cartResponse.lines (get)', { lines: cartResponse.lines });
+      // Get cart from Apex with buyerAccountId
+      const cartResponse = await salesforceCart.getCart(buyer_account_id);
+      logger.info('Raw cartResponse.lines (get)', { lines: cartResponse.lines, buyerAccountId: buyer_account_id });
+
 
       if (!cartResponse.success) {
         return reply.send({
@@ -242,9 +243,11 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
    * GET /api/salesforce-cart/count
    * Return only the total item count (sum of quantities) for quick widget updates.
    */
-  fastify.get('/count', async (_request: FastifyRequest, reply: FastifyReply) => {
+  fastify.get('/count', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const cartResponse = await salesforceCart.getCart();
+      const { buyer_account_id } = request.query as any;
+      
+      const cartResponse = await salesforceCart.getCart(buyer_account_id);
       if (!cartResponse.success) {
         return reply.send({ success: true, item_count: 0 });
       }
