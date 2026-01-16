@@ -167,6 +167,14 @@ function getSessionId(): string {
   });
 }
 
+// Add this helper function near getSessionId()
+function getBuyerAccountId(): string | null {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('salesforce_buyer_account_id');
+  }
+  return null;
+}
+
 export interface CartItem {
   id: string;
   product_id?: string;  // Backend uses product_id field
@@ -190,53 +198,65 @@ export interface CartResponse {
 export const cartApi = {
   addToCart: async (productId: string, quantity: number = 1): Promise<CartResponse> => {
     const sessionId = getSessionId();
+    const buyerAccountId = getBuyerAccountId();
 
     const response = await apiClient.post<CartResponse>('/api/cart/add', {
       product_id: productId,
       quantity,
       session_id: sessionId,
+      buyer_account_id: buyerAccountId, // Add this
     });
     return response.data;
   },
 
   updateQuantity: async (productId: string, quantity: number): Promise<CartResponse> => {
     const sessionId = getSessionId();
+    const buyerAccountId = getBuyerAccountId();
 
     const response = await apiClient.post<CartResponse>('/api/cart/add', {
       product_id: productId,
       quantity,
-      action: 'set', // Set to exact quantity
+      action: 'set',
       session_id: sessionId,
+      buyer_account_id: buyerAccountId, // Add this
     });
     return response.data;
   },
 
   removeFromCart: async (productId: string): Promise<CartResponse> => {
     const sessionId = getSessionId();
+    const buyerAccountId = getBuyerAccountId();
 
     const response = await apiClient.post<CartResponse>('/api/cart/add', {
       product_id: productId,
       action: 'remove',
       session_id: sessionId,
+      buyer_account_id: buyerAccountId, // Add this
     });
     return response.data;
   },
 
   clearCart: async (): Promise<CartResponse> => {
     const sessionId = getSessionId();
+    const buyerAccountId = getBuyerAccountId();
 
     const response = await apiClient.post<CartResponse>('/api/cart/add', {
       action: 'clear',
       session_id: sessionId,
+      buyer_account_id: buyerAccountId, // Add this
     });
     return response.data;
   },
 
   getCart: async (): Promise<CartResponse> => {
     const sessionId = getSessionId();
+    const buyerAccountId = getBuyerAccountId();
 
     const response = await apiClient.get<CartResponse>('/api/cart', {
-      params: { session_id: sessionId },
+      params: { 
+        session_id: sessionId,
+        buyer_account_id: buyerAccountId, // Add this
+      },
     });
     return response.data;
   },
@@ -244,8 +264,13 @@ export const cartApi = {
   // Lightweight cart count endpoint (server-side)
   getCount: async (): Promise<{ success: boolean; item_count: number }> => {
     const sessionId = getSessionId();
+    const buyerAccountId = getBuyerAccountId();
+    
     const response = await apiClient.get<{ success: boolean; item_count: number }>('/api/salesforce-cart/count', {
-      params: { session_id: sessionId },
+      params: { 
+        session_id: sessionId,
+        buyer_account_id: buyerAccountId, // Add this
+      },
     });
     return response.data;
   },

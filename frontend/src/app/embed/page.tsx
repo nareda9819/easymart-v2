@@ -5,12 +5,23 @@ import { ChatHeader } from '@/components/chat/ChatHeader';
 import { ChatWindow } from '@/components/chat/ChatWindow';
 
 export default function EmbedPage() {
-  // Detect if running in iframe and notify parent
+  // Extract accountId from URL and store it
   useEffect(() => {
-    const isInIframe = window.self !== window.top;
+    // Get accountId from URL parameter
+    const params = new URLSearchParams(window.location.search);
+    const accountId = params.get('accountId');
     
+    if (accountId) {
+      // Store in localStorage for API calls to use
+      localStorage.setItem('salesforce_buyer_account_id', accountId);
+      console.log('✓ Buyer Account ID stored:', accountId);
+    } else {
+      console.warn('⚠️ No accountId parameter found in URL');
+    }
+
+    // Notify parent iframe is ready
+    const isInIframe = window.self !== window.top;
     if (isInIframe && window.parent) {
-      // Notify parent that widget is ready
       window.parent.postMessage({ type: 'widgetReady' }, '*');
     }
   }, []);
