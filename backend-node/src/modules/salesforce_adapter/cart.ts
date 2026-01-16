@@ -61,48 +61,54 @@ export async function getCart(buyerAccountId?: string): Promise<ApexGetCartRespo
 /**
  * Add product to Salesforce cart
  */
-export async function addToCart(productId: string, quantity: number): Promise<ApexAddToCartResponse> {
+export async function addToCart(productId: string, quantity: number, buyerAccountId?: string): Promise<ApexAddToCartResponse> {
   try {
     const client = salesforceClient.getClient();
-    const payload = { productId, quantity };
+    const payload: any = { productId, quantity };
+    if (buyerAccountId) payload.buyerAccountId = buyerAccountId;
     const resp = await client.post('/services/apexrest/CartApi', payload);
-    logger.info('Salesforce addToCart response', { success: resp.data?.success, cartItemId: resp.data?.cartItemId });
+    logger.info('Salesforce addToCart response', { success: resp.data?.success, cartItemId: resp.data?.cartItemId, status: resp.status });
     return resp.data;
   } catch (error: any) {
-    logger.error('Salesforce addToCart failed', { productId, quantity, message: error.message });
-    return { success: false, message: error.message };
+    logger.error('Salesforce addToCart failed', { productId, quantity, message: error.message, status: error?.response?.status, responseBody: error?.response?.data });
+    const message = error?.response?.data?.message || error?.response?.data || error.message;
+    return { success: false, message: message };
   }
 }
 
 /**
  * Update cart item quantity (or delete if quantity <= 0)
  */
-export async function updateCartItem(cartItemId: string, quantity: number): Promise<ApexUpdateCartItemResponse> {
+export async function updateCartItem(cartItemId: string, quantity: number, buyerAccountId?: string): Promise<ApexUpdateCartItemResponse> {
   try {
     const client = salesforceClient.getClient();
-    const payload = { cartItemId, quantity };
+    const payload: any = { cartItemId, quantity };
+    if (buyerAccountId) payload.buyerAccountId = buyerAccountId;
     const resp = await client.patch('/services/apexrest/CartApi', payload);
-    logger.info('Salesforce updateCartItem response', { success: resp.data?.success, cartItemId: resp.data?.cartItemId });
+    logger.info('Salesforce updateCartItem response', { success: resp.data?.success, cartItemId: resp.data?.cartItemId, status: resp.status });
     return resp.data;
   } catch (error: any) {
-    logger.error('Salesforce updateCartItem failed', { cartItemId, quantity, message: error.message });
-    return { success: false, message: error.message };
+    logger.error('Salesforce updateCartItem failed', { cartItemId, quantity, message: error.message, status: error?.response?.status, responseBody: error?.response?.data });
+    const message = error?.response?.data?.message || error?.response?.data || error.message;
+    return { success: false, message: message };
   }
 }
 
 /**
  * Remove item from cart
  */
-export async function removeFromCart(cartItemId: string): Promise<ApexDeleteCartItemResponse> {
+export async function removeFromCart(cartItemId: string, buyerAccountId?: string): Promise<ApexDeleteCartItemResponse> {
   try {
     const client = salesforceClient.getClient();
-    const payload = { cartItemId };
+    const payload: any = { cartItemId };
+    if (buyerAccountId) payload.buyerAccountId = buyerAccountId;
     const resp = await client.delete('/services/apexrest/CartApi', { data: payload });
-    logger.info('Salesforce removeFromCart response', { success: resp.data?.success, cartItemId: resp.data?.cartItemId });
+    logger.info('Salesforce removeFromCart response', { success: resp.data?.success, cartItemId: resp.data?.cartItemId, status: resp.status });
     return resp.data;
   } catch (error: any) {
-    logger.error('Salesforce removeFromCart failed', { cartItemId, message: error.message });
-    return { success: false, message: error.message };
+    logger.error('Salesforce removeFromCart failed', { cartItemId, message: error.message, status: error?.response?.status, responseBody: error?.response?.data });
+    const message = error?.response?.data?.message || error?.response?.data || error.message;
+    return { success: false, message: message };
   }
 }
 

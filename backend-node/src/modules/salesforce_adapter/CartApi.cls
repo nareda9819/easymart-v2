@@ -21,13 +21,22 @@ global with sharing class CartApi {
                 return error(out, res, 400, 'Invalid productId or quantity');
             }
 
-            Id webStoreId = [
-                SELECT Id FROM WebStore
-                WHERE Name = 'FantasticEcomm'
-                LIMIT 1
-            ].Id;
+            // Allow caller to supply webStoreId and buyerAccountId in the request body.
+            // Fallback to lookup/name and existing hardcoded buyer if not provided.
+            Id webStoreId;
+            if (String.isNotBlank(req.webStoreId)) {
+                webStoreId = (Id) req.webStoreId;
+            } else {
+                webStoreId = [
+                    SELECT Id FROM WebStore
+                    WHERE Name = 'EasyMart'
+                    LIMIT 1
+                ].Id;
+            }
 
-            Id buyerAccountId = '001dL00001jFm6lQAC';
+            Id buyerAccountId = String.isNotBlank(req.buyerAccountId)
+                ? (Id) req.buyerAccountId
+                : '001dL00001otSknQAE';
 
             ConnectApi.CartSummary summary =
                 ConnectApi.CommerceCart.getOrCreateActiveCartSummary(
@@ -95,7 +104,7 @@ global static GetCartResponse getCart() {
         Id webStoreId = [
             SELECT Id
             FROM WebStore
-            WHERE Name = 'FantasticEcomm'
+            WHERE Name = 'EasyMart'
             LIMIT 1
         ].Id;
 
@@ -103,7 +112,7 @@ global static GetCartResponse getCart() {
         String buyerAccountIdParam = req.params.get('buyerAccountId');
         Id buyerAccountId = String.isNotBlank(buyerAccountIdParam) 
             ? (Id)buyerAccountIdParam 
-            : '001dL00001jFm6lQAC';
+            : '001dL00001otSknQAE';
 
         System.debug('CartApi.getCart - Using buyerAccountId: ' + buyerAccountId);
 
@@ -167,13 +176,20 @@ global static GetCartResponse getCart() {
                 return errorUpdate(out, res, 400, 'cartItemId is required');
             }
 
-            Id webStoreId = [
-                SELECT Id FROM WebStore
-                WHERE Name = 'FantasticEcomm'
-                LIMIT 1
-            ].Id;
+            Id webStoreId;
+            if (String.isNotBlank(req.webStoreId)) {
+                webStoreId = (Id) req.webStoreId;
+            } else {
+                webStoreId = [
+                    SELECT Id FROM WebStore
+                    WHERE Name = 'EasyMart'
+                    LIMIT 1
+                ].Id;
+            }
 
-            Id buyerAccountId = '001dL00001jFm6lQAC';
+            Id buyerAccountId = String.isNotBlank(req.buyerAccountId)
+                ? (Id) req.buyerAccountId
+                : '001dL00001otSknQAE';
 
             ConnectApi.CartSummary summary =
                 ConnectApi.CommerceCart.getOrCreateActiveCartSummary(
@@ -248,13 +264,20 @@ global static GetCartResponse getCart() {
                 return errorDelete(out, res, 400, 'cartItemId is required');
             }
 
-            Id webStoreId = [
-                SELECT Id FROM WebStore
-                WHERE Name = 'FantasticEcomm'
-                LIMIT 1
-            ].Id;
+            Id webStoreId;
+            if (String.isNotBlank(req.webStoreId)) {
+                webStoreId = (Id) req.webStoreId;
+            } else {
+                webStoreId = [
+                    SELECT Id FROM WebStore
+                    WHERE Name = 'EasyMart'
+                    LIMIT 1
+                ].Id;
+            }
 
-            Id buyerAccountId = '001dL00001jFm6lQAC';
+            Id buyerAccountId = String.isNotBlank(req.buyerAccountId)
+                ? (Id) req.buyerAccountId
+                : '001dL00001otSknQAE';
 
             ConnectApi.CartSummary summary =
                 ConnectApi.CommerceCart.getOrCreateActiveCartSummary(
@@ -297,11 +320,15 @@ global static GetCartResponse getCart() {
     global class AddToCartRequest {
         public String productId;
         public Integer quantity;
+        public String buyerAccountId;
+        public String webStoreId;
     }
 
     global class UpdateCartItemRequest {
         public String cartItemId;
         public Integer quantity;
+        public String buyerAccountId;
+        public String webStoreId;
     }
 
     global class AddToCartResponse {
@@ -320,6 +347,8 @@ global static GetCartResponse getCart() {
 
     global class DeleteCartItemRequest {
         public String cartItemId;
+        public String buyerAccountId;
+        public String webStoreId;
     }
 
     global class DeleteCartItemResponse {

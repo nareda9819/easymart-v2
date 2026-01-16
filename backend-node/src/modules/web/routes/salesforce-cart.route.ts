@@ -104,8 +104,8 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
    */
   fastify.post('/add', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { product_id, quantity = 1, session_id } = request.body as any;
-        logger.info('Adding to real Salesforce cart', { product_id, quantity, session_id });
+      const { product_id, quantity = 1, session_id, buyer_account_id } = request.body as any;
+        logger.info('Adding to real Salesforce cart', { product_id, quantity, session_id, buyer_account_id });
 
       if (!product_id) {
         return reply.code(400).send({
@@ -116,8 +116,8 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
 
       logger.info('Adding to real Salesforce cart', { product_id, quantity });
 
-      // Call Apex CartApi to add to cart
-      const apexResponse = await salesforceCart.addToCart(product_id, quantity);
+      // Call Apex CartApi to add to cart (forward buyer_account_id when available)
+      const apexResponse = await salesforceCart.addToCart(product_id, quantity, buyer_account_id);
 
       if (!apexResponse.success) {
         return reply.code(500).send({
@@ -126,8 +126,8 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Get updated cart from Salesforce
-      const cartResponse = await salesforceCart.getCart();
+      // Get updated cart from Salesforce (use buyer_account_id when available)
+      const cartResponse = await salesforceCart.getCart(buyer_account_id);
       try {
         logger.info('Raw cartResponse.lines (add)', { lines: cartResponse.lines });
         logger.info('Raw cartResponse.lines (add)-string', { lines: JSON.stringify(cartResponse.lines || []) });
@@ -266,7 +266,7 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
    */
   fastify.post('/update', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { cartItemId, quantity, session_id } = request.body as any;
+      const { cartItemId, quantity, session_id, buyer_account_id } = request.body as any;
        logger.info('Adding to real Salesforce cart', { cartItemId, quantity, session_id });
 
       if (!cartItemId || quantity === undefined) {
@@ -278,8 +278,8 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
 
       logger.info('Updating Salesforce cart item', { cartItemId, quantity });
 
-      // Call Apex to update quantity
-      const apexResponse = await salesforceCart.updateCartItem(cartItemId, quantity);
+      // Call Apex to update quantity (forward buyer_account_id when available)
+      const apexResponse = await salesforceCart.updateCartItem(cartItemId, quantity, buyer_account_id);
 
       if (!apexResponse.success) {
         return reply.code(500).send({
@@ -288,8 +288,8 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Get updated cart
-      const cartResponse = await salesforceCart.getCart();
+      // Get updated cart (use buyer_account_id when available)
+      const cartResponse = await salesforceCart.getCart(buyer_account_id);
       logger.info('Raw cartResponse.lines (update)', { lines: cartResponse.lines });
 
       const enrichedItems = await Promise.all(
@@ -337,8 +337,8 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
    */
   fastify.post('/remove', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { cartItemId, session_id } = request.body as any;
-        logger.info('Adding to real Salesforce cart', { cartItemId, session_id });
+      const { cartItemId, session_id, buyer_account_id } = request.body as any;
+        logger.info('Adding to real Salesforce cart', { cartItemId, session_id, buyer_account_id });
 
       if (!cartItemId) {
         return reply.code(400).send({
@@ -349,8 +349,8 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
 
       logger.info('Removing from Salesforce cart', { cartItemId });
 
-      // Call Apex to delete item
-      const apexResponse = await salesforceCart.removeFromCart(cartItemId);
+      // Call Apex to delete item (forward buyer_account_id when available)
+      const apexResponse = await salesforceCart.removeFromCart(cartItemId, buyer_account_id);
 
       if (!apexResponse.success) {
         return reply.code(500).send({
@@ -359,8 +359,8 @@ export default async function salesforceCartRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Get updated cart
-      const cartResponse = await salesforceCart.getCart();
+      // Get updated cart (use buyer_account_id when available)
+      const cartResponse = await salesforceCart.getCart(buyer_account_id);
       logger.info('Raw cartResponse.lines (remove)', { lines: cartResponse.lines });
 
       const enrichedItems = await Promise.all(

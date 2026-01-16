@@ -1,69 +1,43 @@
-@RestResource(urlMapping='/WidgetHelper/*')
 global with sharing class WidgetHelper {
-    
-    @HttpGet
-    global static WidgetContext getContext() {
-        WidgetContext ctx = new WidgetContext();
-        
+
+    // Internal helper: safely determine AccountId for current user
+    public static Id getAccountIdForCurrentUser() {
+        Id userId = UserInfo.getUserId();
+
+        // Use describe to check which fields exist on User in this org
+        Map<String, Schema.SObjectField> userFields = Schema.SObjectType.User.fields.getMap();
+
         try {
-            // Get current user's account ID
-            User currentUser = [
-                SELECT Id, AccountId, ContactId 
-                FROM User 
-                WHERE Id = :UserInfo.getUserId() 
-                LIMIT 1
-            ];
-            
-            ctx.success = true;
-            ctx.userId = currentUser.Id;
-            ctx.accountId = currentUser.AccountId;
-            ctx.contactId = currentUser.ContactId;
-            
+            // If User has AccountId field, prefer that (some orgs may have it)
+            if (userFields.containsKey('AccountId')) {
+                String q = 'SELECT Id, AccountId FROM User WHERE Id = '\'' + String.escapeSingleQuotes(String.valueOf(userId)) + '\' LIMIT 1';
+                User u = (User) Database.query(q);
+                if (u != null && u.AccountId != null) return u.AccountId;
+            }
+
+            // If User has ContactId field, fetch Contact.AccountId
+            if (userFields.containsKey('ContactId')) {
+                String q2 = 'SELECT Id, ContactId FROM User WHERE Id = '\'' + String.escapeSingleQuotes(String.valueOf(userId)) + '\' LIMIT 1';
+                User u2 = (User) Database.query(q2);
+                if (u2 != null && u2.ContactId != null) {
+                    String q3 = 'SELECT AccountId FROM Contact WHERE Id = '\'' + String.escapeSingleQuotes(String.valueOf(u2.ContactId)) + '\' LIMIT 1';
+                    Contact c = (Contact) Database.query(q3);
+                    if (c != null) return c.AccountId;
+                }
+            }
+
         } catch (Exception e) {
-            ctx.success = false;
-            ctx.message = e.getMessage();
-        }
-        
-        return ctx;
-    }
-    
-    global class WidgetContext {
-        public Boolean success;
-        public String message;
-        public String userId;
-        public String accountId;
-        public String contactId;
-    }
-	@AuraEnabled(cacheable=true)
-public static String getBuyerAccountId() {
-    try {
-        // Get ContactId from User
-        User u = [
-            SELECT ContactId
-            FROM User
-            WHERE Id = :UserInfo.getUserId()
-            LIMIT 1
-        ];
-
-        // Internal user → no contact
-        if (u.ContactId == null) {
-            return null;
+            System.debug('WidgetHelper.getAccountIdForCurrentUser error: ' + e.getMessage());
         }
 
-        // Get AccountId from Contact
-        Contact c = [
-            SELECT AccountId
-            FROM Contact
-            WHERE Id = :u.ContactId
-            LIMIT 1
-        ];
-
-        return c.AccountId;
-
-    } catch (Exception e) {
-        System.debug('Error getting buyer account: ' + e.getMessage());
         return null;
     }
-}
+
+    // Aura/LWC callable method
+    @AuraEnabled(cacheable=true)
+    public static String getBuyerAccountId() {
+        Id acct = getAccountIdForCurrentUser();
+        return acct == null ? null : String.valueOf(acct);
+    }
 
 }
