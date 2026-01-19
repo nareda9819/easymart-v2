@@ -7,10 +7,12 @@ interface CartRequestBody {
   quantity?: number;
   action?: 'add' | 'remove' | 'set' | 'clear';
   session_id: string;
+  buyer_account_id?: string;
 }
 
 interface CartQuerystring {
   session_id: string;
+  buyer_account_id?: string;
 }
 
 export default async function cartRoutes(fastify: FastifyInstance) {
