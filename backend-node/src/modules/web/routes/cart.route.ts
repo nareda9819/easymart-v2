@@ -20,7 +20,7 @@ export default async function cartRoutes(fastify: FastifyInstance) {
    */
   fastify.post('/api/cart/add', async (request: FastifyRequest<{ Body: CartRequestBody }>, reply: FastifyReply) => {
     try {
-      const { product_id, quantity = 1, session_id, action } = request.body;
+      const { product_id, quantity = 1, session_id, action, buyer_account_id } = request.body;
 
       if (!session_id) {
         return reply.code(400).send({
@@ -43,7 +43,7 @@ export default async function cartRoutes(fastify: FastifyInstance) {
         // Handle different cart actions for Salesforce-backed products
         if (action === 'remove') {
           // Find the matching cart item in the Salesforce cart to obtain cartItemId
-          const sfGet = await fastify.inject({ method: 'GET', url: `/api/salesforce-cart?session_id=${session_id}` });
+          const sfGet = await fastify.inject({ method: 'GET', url: `/api/salesforce-cart?session_id=${session_id}${buyer_account_id ? `&buyer_account_id=${encodeURIComponent(buyer_account_id)}` : ''}` });
           const sfData = sfGet.json() as any;
           const lines = sfData?.cart?.items || [];
           const match = lines.find((l: any) => String(l.product_id) === String(product_id) || String(l.id) === String(product_id));
@@ -54,7 +54,7 @@ export default async function cartRoutes(fastify: FastifyInstance) {
           const removeResp = await fastify.inject({
             method: 'POST',
             url: '/api/salesforce-cart/remove',
-            payload: { cartItemId: match.id, session_id }
+            payload: { cartItemId: match.id, session_id, buyer_account_id }
           });
 
           return reply.send(removeResp.json());
@@ -62,7 +62,7 @@ export default async function cartRoutes(fastify: FastifyInstance) {
 
         if (action === 'set') {
           // Set exact quantity: map product_id -> cartItemId then call update
-          const sfGet = await fastify.inject({ method: 'GET', url: `/api/salesforce-cart?session_id=${session_id}` });
+          const sfGet = await fastify.inject({ method: 'GET', url: `/api/salesforce-cart?session_id=${session_id}${buyer_account_id ? `&buyer_account_id=${encodeURIComponent(buyer_account_id)}` : ''}` });
           const sfData = sfGet.json() as any;
           const lines = sfData?.cart?.items || [];
           const match = lines.find((l: any) => String(l.product_id) === String(product_id) || String(l.id) === String(product_id));
@@ -73,7 +73,7 @@ export default async function cartRoutes(fastify: FastifyInstance) {
           const updateResp = await fastify.inject({
             method: 'POST',
             url: '/api/salesforce-cart/update',
-            payload: { cartItemId: match.id, quantity, session_id }
+            payload: { cartItemId: match.id, quantity, session_id, buyer_account_id }
           });
 
           return reply.send(updateResp.json());
@@ -88,7 +88,7 @@ export default async function cartRoutes(fastify: FastifyInstance) {
         const sfCartResponse = await fastify.inject({
           method: 'POST',
           url: '/api/salesforce-cart/add',
-          payload: { product_id, quantity, session_id }
+          payload: { product_id, quantity, session_id, buyer_account_id }
         });
 
         return reply.send(sfCartResponse.json());
