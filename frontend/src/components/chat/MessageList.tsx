@@ -146,7 +146,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
                         key={`${idx}-${pIdx}-${product.id}`}
                         className="bg-white rounded-xl p-4 border border-gray-200 hover:shadow-lg transition-all"
                       >
-                        <div className="flex gap-4">
+                        <div className="flex flex-col sm:flex-row gap-4">
                           {product.image && (
                             <div className="flex-shrink-0">
                               <img
@@ -175,13 +175,13 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
                               </p>
                             )}
 
-                            <div className="flex gap-2 mt-auto">
+                            <div className="flex gap-2 mt-auto flex-col sm:flex-row items-stretch">
                               {product.url && (
                                 <a
                                   href={product.url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="flex-1 text-center text-sm font-semibold text-white bg-gradient-to-r from-red-600 to-pink-600 px-4 py-2 rounded-lg hover:from-red-700 hover:to-pink-700 transition-all"
+                                  className="w-full sm:flex-1 text-center text-sm font-semibold text-white bg-gradient-to-r from-red-600 to-pink-600 px-4 py-2 rounded-lg hover:from-red-700 hover:to-pink-700 transition-all"
                                 >
                                   View Details
                                 </a>
@@ -195,7 +195,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
                                 if (quantity > 0) {
                                   // Show quantity counter
                                   return (
-                                    <div className="flex-1 flex items-center justify-center gap-1 border-2 border-gray-300 rounded-lg p-1">
+                                    <div className="flex-none flex items-center justify-center gap-1 border-2 border-gray-300 rounded-lg p-1">
                                       <button
                                         onClick={() => handleDecrease(product)}
                                         disabled={isLoading}
@@ -221,7 +221,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
                                     <button
                                       onClick={() => handleAddToCart(product)}
                                       disabled={isLoading || product.inventory_quantity === 0}
-                                      className="flex-1 text-center text-sm font-semibold text-red-600 bg-white border-2 border-red-600 px-4 py-2 rounded-lg hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                      className="w-full sm:flex-1 text-center text-sm font-semibold text-red-600 bg-white border-2 border-red-600 px-4 py-2 rounded-lg hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                       {isLoading ? 'Adding...' : product.inventory_quantity === 0 ? 'Out of Stock' : 'Add to Cart'}
                                     </button>
