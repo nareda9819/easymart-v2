@@ -122,7 +122,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
           className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
         >
           <div
-            className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+            className={`max-w-[85%] rounded-2xl px-4 py-3 flex ${
               message.role === 'user'
                 ? 'bg-gradient-to-r from-red-600 to-pink-600 text-white shadow-lg'
                 : 'bg-white border-2 border-red-100 text-gray-800 shadow-md'
