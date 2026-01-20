@@ -233,6 +233,63 @@ export const useChatStore = create<ChatState>()(
             messages: [...state.messages, errorMsg],
           }));
         }
+
+        // Local shortcut: "Add to Cart Option N" (keeps working if backend doesn't return an action)
+        {
+          const m = text.match(/^\s*add to cart option\s*(\d+)[\.\)]?\s*$/i);
+          if (m) {
+            const optIndex = Math.max(0, parseInt(m[1], 10) - 1);
+            const allMessages = get().messages;
+            let searchAction: any = null;
+            for (let i = allMessages.length - 1; i >= 0; i--) {
+              const msg = allMessages[i];
+              if (msg.role === 'assistant' && Array.isArray(msg.actions)) {
+                const a = msg.actions.find((aa: any) => aa.type === 'search_results' && aa.data?.results?.length);
+                if (a) { searchAction = a; break; }
+              }
+            }
+            if (searchAction) {
+              const results = searchAction.data.results || [];
+              if (optIndex >= 0 && optIndex < results.length) {
+                const product = results[optIndex];
+                try {
+                  const { useCartStore } = await import('./cartStore');
+                  const cartStore = useCartStore.getState();
+                  await cartStore.addToCart(product.id, 1);
+
+                  const confirm: Message = {
+                    id: generateUUID(),
+                    role: 'assistant',
+                    content: `Added "${product.title}" to your cart.`,
+                    timestamp: new Date().toISOString(),
+                  };
+
+                  set((state) => ({
+                    messages: [...state.messages, confirm],
+                    isLoading: false,
+                  }));
+
+                  setTimeout(() => cartStore.getCart(), 300);
+                  setTimeout(() => cartStore.getCart(), 1500);
+                  return;
+                } catch (err: any) {
+                  const errMsg: Message = {
+                    id: generateUUID(),
+                    role: 'assistant',
+                    content: `Sorry, I couldn't add "${product.title}" to your cart: ${err?.message || err}`,
+                    timestamp: new Date().toISOString(),
+                  };
+                  set((state) => ({
+                    messages: [...state.messages, errMsg],
+                    isLoading: false,
+                  }));
+                  return;
+                }
+              }
+            }
+            // fall-through to normal chat flow if we can't resolve locally
+          }
+        }
       },
 
       addMessage: (message: Message) => {
